@@ -107,15 +107,22 @@ function C.IsFiltered(messageType)
     return false
 end
 
-local function attachErrorFilter()
+local errorListener = A.Listener({UI_ERROR_MESSAGE = function(messageType, message)
     local frame = _G.UIErrorsFrame
-    if C.errorHooked or not frame or type(frame.TryDisplayMessage) ~= "function" then return end
-    C.errorHooked = true
-    local original = frame.TryDisplayMessage
-    frame.TryDisplayMessage = function(self, messageType, ...)
-        if C.IsFiltered(messageType) then return end
-        return original(self, messageType, ...)
-    end
+    if not frame or C.IsFiltered(messageType) then return end
+    local color = _G.RED_FONT_COLOR
+    local r, g, b = 1, .1, .1
+    if color and color.GetRGB then r, g, b = color:GetRGB() end
+    frame:TryDisplayMessage(messageType, message, r, g, b)
+end})
+
+local function setErrorFilter(active)
+    local frame = _G.UIErrorsFrame
+    if not frame or type(frame.TryDisplayMessage) ~= "function" or not frame.UnregisterEvent then return end
+    if active == (C.errorActive == true) then return end
+    C.errorActive = active
+    errorListener:Set(active)
+    if active then frame:UnregisterEvent("UI_ERROR_MESSAGE") else frame:RegisterEvent("UI_ERROR_MESSAGE") end
 end
 
 ----------------------------------------------------------------------
@@ -177,6 +184,7 @@ function C.ApplyHide()
         end
     end
     C.hoverActive = hover
+    C.SetHoverClock(hover)
 end
 
 local hoverFrame = CreateFrame("Frame")
@@ -192,6 +200,9 @@ local function hoverTick(_, dt)
         end
     end
 end
+
+-- A clock frame only exists for the time a hover mode is in use.
+function C.SetHoverClock(active) hoverFrame:SetScript("OnUpdate", active and hoverTick or nil) end
 
 ----------------------------------------------------------------------
 local listener = A.Listener({
@@ -210,7 +221,6 @@ function C.SettingsChanged()
     for key in pairs(C.HideTargets) do anyHide = anyHide or data[key] ~= "show" end
     local any = data.modQoL and (data.fastLoot or data.lootGreed or data.skipGossip or data.declineDuels or data.bgRelease or anyHide)
     listener:Set(any == true or next(C.hidden) ~= nil)
-    if on("errorFilter") then attachErrorFilter() end
+    setErrorFilter(on("errorFilter") == true)
     if anyHide or next(C.hidden) ~= nil then C.ApplyHide() end
-    hoverFrame:SetScript("OnUpdate", C.hoverActive and hoverTick or nil)
 end

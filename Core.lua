@@ -11,6 +11,7 @@ function App:Changed()
     NS.SettingsUI.Refresh()
     NS.RollWindow.SettingsChanged()
     self:ModulesChanged()
+    self:WakeTick()
 end
 
 -- Modules register here and switch their own events and frames on or off.

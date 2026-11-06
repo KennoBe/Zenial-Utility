@@ -3,7 +3,7 @@ local B = {}
 NS.AutoBuy = B
 local A, L, T, tr, D = NS.Adapter, NS.Logic, NS.Theme, NS.Text, NS.ReagentData
 
-local STEP, ROWS = .25, 8
+local STEP, ROWS, SETTLE = .25, 8, 2
 local BOW_SUBCLASSES = {[2] = 2, [18] = 2, [3] = 3} -- weapon subclass to projectile subclass: arrows 2, bullets 3
 local PROJECTILE_CLASS = 6
 
@@ -132,6 +132,7 @@ local function stop(report)
     runner:SetScript("OnUpdate", nil)
     local job = B.job
     B.job = nil
+    B.settleUntil = (tonumber(A.Call(GetTime)) or 0) + SETTLE
     if report and job and job.spent > 0 then
         A.Print(string.format(tr("Eingekauft für %s.", "Bought for %s."), A.Money(job.spent)))
     end
@@ -159,6 +160,7 @@ end
 
 function B.Execute(plan)
     if B.job or not plan or #plan == 0 then return false end
+    if B.settleUntil and (tonumber(A.Call(GetTime)) or 0) < B.settleUntil then return false end
     local rows = {}
     for _, row in ipairs(plan) do
         rows[#rows + 1] = {item = row.item, index = row.index, quantity = row.quantity, fullQuantity = row.quantity, stack = row.stack, cost = row.cost}

@@ -384,6 +384,9 @@ local function addItemLines(tooltip, item, link)
     price, stack = tonumber(price) or 0, tonumber(stack) or 1
     if price <= 0 then return end
     tooltip:AddLine(tr("Verkaufspreis: ", "Sell price: ") .. A.Money(price), .82, .79, .71)
+    local owner = tooltip.GetOwner and A.Call(tooltip.GetOwner, tooltip)
+    local held = type(owner) == "table" and tonumber(owner.count) or nil
+    if held and held > 1 then stack = held end
     if stack > 1 then tooltip:AddLine(string.format(tr("Stapel (%d): ", "Stack (%d): "), stack) .. A.Money(price * stack), .82, .79, .71) end
 end
 

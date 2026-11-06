@@ -26,6 +26,10 @@ AutoBuy.lua
 BuffData.lua
 Reminders.lua
 Quests.lua
+Inventory.lua
+InfoBar.lua
+Tooltips.lua
+Comfort.lua
 Widgets.lua
 WarnBars.lua
 RollWindow.lua

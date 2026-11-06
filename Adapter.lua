@@ -38,7 +38,9 @@ end
 
 function A.Money(copper)
     copper = math.floor(tonumber(copper) or 0)
-    local text = A.Call(GetCoinTextureString, copper)
+    -- The client moved this into C_CurrencyInfo; the global only exists on older clients.
+    local api = _G.C_CurrencyInfo
+    local text = A.Call(api and api.GetCoinTextureString or GetCoinTextureString, copper)
     if type(text) == "string" and text ~= "" then return text end
     return string.format("%dg %ds %dc", math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100)
 end
@@ -68,4 +70,51 @@ end
 function A.PlayerClass()
     local _, classFile = A.Call(UnitClass, "player")
     return type(classFile) == "string" and classFile or "GENERAL"
+end
+
+-- One event frame per module. Events are registered only while the module is on,
+-- so a switched-off feature costs nothing. An event the client does not know is skipped.
+function A.Listener(handlers, units)
+    local frame = CreateFrame("Frame")
+    local listener = {frame = frame, active = false}
+    frame:SetScript("OnEvent", function(_, event, ...)
+        local handler = handlers[event]
+        if handler then handler(...) end
+    end)
+    function listener:Set(on)
+        on = on == true
+        if on == self.active then return end
+        self.active = on
+        if not on then frame:UnregisterAllEvents(); return end
+        for event in pairs(handlers) do
+            local unit = units and units[event]
+            if unit then pcall(frame.RegisterUnitEvent, frame, event, unit)
+            else pcall(frame.RegisterEvent, frame, event) end
+        end
+    end
+    return listener
+end
+
+function A.Shift() return A.Call(IsShiftKeyDown) == true end
+
+function A.GroupUnits()
+    local units = {}
+    if A.Call(IsInRaid) == true then
+        for index = 1, tonumber(A.Call(GetNumGroupMembers)) or 0 do units[#units + 1] = "raid" .. index end
+    elseif A.Call(IsInGroup) == true then
+        for index = 1, 4 do
+            if A.Call(UnitExists, "party" .. index) == true then units[#units + 1] = "party" .. index end
+        end
+    end
+    return units
+end
+
+function A.ItemCount(item)
+    local api = _G.C_Item
+    return api and tonumber(A.Call(api.GetItemCount, item)) or 0
+end
+
+function A.PlaySound(kit)
+    local api = _G.C_Sound
+    if api then A.Call(api.PlaySound, kit) end
 end

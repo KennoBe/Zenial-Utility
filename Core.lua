@@ -6,12 +6,28 @@ NS.App = App
 function App:Changed()
     self.db = L.Sanitize(self.db)
     ZenialUtilityDB = self.db
+    NS.Profiles.Store()
     MT.Refresh()
     NS.SettingsUI.Refresh()
     NS.RollWindow.SettingsChanged()
+    self:ModulesChanged()
 end
 
-function App:GraphicsConfirm() NS.GraphicsConfirm.Show() end
+-- Modules register here and switch their own events and frames on or off.
+App.modules = {}
+function App:AddModule(module) self.modules[#self.modules + 1] = module end
+function App:ModulesChanged()
+    for _, module in ipairs(self.modules) do
+        if module.SettingsChanged then module.SettingsChanged() end
+    end
+end
+App:AddModule(NS.Characters)
+App:AddModule(NS.AutoBuy)
+
+function App:GraphicsConfirm()
+    NS.GraphicsConfirm.Show()
+    self:WakeTick()
+end
 function App:GraphicsConfirmDone()
     NS.GraphicsConfirm.Hide()
     NS.SettingsUI.Refresh()
@@ -22,13 +38,14 @@ function App:Initialize()
     local fresh = type(ZenialUtilityDB) ~= "table" or next(ZenialUtilityDB) == nil
     self.db = L.Sanitize(ZenialUtilityDB)
     ZenialUtilityDB = self.db
+    NS.Profiles.Initialize()
     NS.Setup.Initialize(fresh)
 end
 
 local driver = CreateFrame("Frame")
 NS.Driver = driver
 local events = {"ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED",
-    "CVAR_UPDATE", "UPDATE_MACROS", "MERCHANT_SHOW", "MERCHANT_CLOSED", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE",
+    "CVAR_UPDATE", "UPDATE_MACROS", "PLAYER_MONEY", "MERCHANT_SHOW", "MERCHANT_CLOSED", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE",
     "QUEST_GREETING", "GOSSIP_SHOW", "UPDATE_INVENTORY_DURABILITY", "BAG_UPDATE_DELAYED", "UNIT_INVENTORY_CHANGED",
     "PLAYER_LEVEL_UP", "BOSS_KILL", "ENCOUNTER_END", "TIME_PLAYED_MSG", "CHAT_MSG_SYSTEM"}
 for _, event in ipairs(events) do
@@ -44,10 +61,14 @@ driver:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "PLAYER_LOGIN" then
         App:Initialize()
+        NS.Profiles.Login()
         G.ResumeUnanswered(App.db)
+        NS.Characters.Update()
         H.AttachTooltips()
         MT.Refresh()
         NS.Setup.Schedule()
+        App:ModulesChanged()
+        App:WakeTick()
         return
     end
     if not App.db then return end
@@ -55,6 +76,7 @@ driver:SetScript("OnEvent", function(_, event, ...)
         H.CheckAll()
     elseif event == "PLAYER_REGEN_ENABLED" then
         MT.CombatEnded()
+        NS.Profiles.CombatEnded()
         NS.SettingsUI.Refresh()
     elseif event == "PLAYER_REGEN_DISABLED" then
         NS.SettingsUI.Refresh()
@@ -65,8 +87,9 @@ driver:SetScript("OnEvent", function(_, event, ...)
     end
 end)
 
+-- The per-frame script exists only while something is running. An idle addon has none.
 local attachTimer = 0
-driver:SetScript("OnUpdate", function(_, dt)
+local function tick(_, dt)
     if not App.db then return end
     G.Tick(App.db, dt)
     NS.GraphicsConfirm.Update()
@@ -76,7 +99,10 @@ driver:SetScript("OnUpdate", function(_, dt)
         attachTimer = attachTimer + dt
         if attachTimer >= 5 then attachTimer = 0; MT.TryAttach() end
     end
-end)
+    if not G.deadline and not H.Busy() and MT.pin then driver:SetScript("OnUpdate", nil) end
+end
+function App:WakeTick() driver:SetScript("OnUpdate", tick) end
+App:WakeTick()
 
 SLASH_ZENIALUTILITY1 = "/zutil"
 SLASH_ZENIALUTILITY2 = "/zenialutility"

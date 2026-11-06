@@ -41,6 +41,7 @@ local function sellPrice(link)
 end
 
 function H.Repair()
+    H.repairWaiting = false
     if not comfort("vendorRepair") or A.Call(CanMerchantRepair) ~= true then return end
     local cost, needed = A.Call(GetRepairAllCost)
     cost = tonumber(cost) or 0
@@ -52,7 +53,9 @@ function H.Repair()
     elseif (tonumber(A.Call(GetMoney)) or 0) >= cost then
         A.Call(RepairAllItems)
     else
-        if db().vendorChat then A.Print(tr("Nicht genug Gold zum Reparieren.", "Not enough gold to repair.")) end
+        -- Selling grey items often brings the missing gold, so the next gold change tries again.
+        if db().vendorChat and not H.repairTold then A.Print(string.format(tr("Nicht genug Gold zum Reparieren (%s).", "Not enough gold to repair (%s)."), A.Money(cost))) end
+        H.repairTold, H.repairWaiting = true, true
         return
     end
     if db().vendorChat then
@@ -61,40 +64,77 @@ function H.Repair()
 end
 
 function H.MerchantOpened()
+    H.merchantOpen, H.repairTold = true, false
     if shiftHeld() then return end
     H.Repair()
     if comfort("vendorJunk") then
         local queue = H.JunkSlots()
-        if #queue > 0 then H.sellQueue, H.sellTotal, H.sellCount, H.sellTimer = queue, 0, 0, 0 end
+        if #queue > 0 then
+            H.sellQueue, H.sellTotal, H.sellCount, H.sellTimer, H.sellPass, H.sellSent = queue, 0, 0, 0, 1, {}
+            NS.App:WakeTick()
+        end
     end
 end
 
 function H.MerchantClosed()
+    H.merchantOpen, H.repairWaiting = false, false
     H.FinishSale()
+end
+
+function H.MoneyChanged()
+    if H.merchantOpen and H.repairWaiting then H.Repair() end
+end
+
+-- A sale counts once the slot no longer holds that stack, so a refused item is not reported as sold.
+local function confirmSales()
+    local api = _G.C_Container
+    for _, row in ipairs(H.sellSent or {}) do
+        local info = A.Call(api.GetContainerItemInfo, row.bag, row.slot)
+        local still = type(info) == "table" and info.hyperlink == row.link and not info.isLocked
+        if not still then
+            H.sellCount = H.sellCount + 1
+            H.sellTotal = H.sellTotal + row.value
+        end
+    end
+    H.sellSent = {}
 end
 
 function H.FinishSale()
     if not H.sellQueue then return end
     H.sellQueue = nil
-    if db().vendorChat and H.sellCount > 0 then
-        A.Print(string.format(tr("%d graue Gegenstände verkauft: %s", "Sold %d grey items: %s"), H.sellCount, A.Money(H.sellTotal)))
+    confirmSales()
+    if H.sellCount > 0 then
+        local stats = db().sellStats
+        stats.count = (tonumber(stats.count) or 0) + H.sellCount
+        stats.total = (tonumber(stats.total) or 0) + H.sellTotal
+        if db().vendorChat then
+            A.Print(string.format(tr("%d graue Gegenstände verkauft: %s", "Sold %d grey items: %s"), H.sellCount, A.Money(H.sellTotal)))
+        end
     end
 end
 
 -- One item per step, so the server keeps up and closing the window stops at once.
+-- After the list is done the bags are read again: whatever is still there gets up to two more tries.
 function H.SellStep(dt)
     if not H.sellQueue then return end
     H.sellTimer = H.sellTimer + dt
+    if #H.sellQueue == 0 then
+        if H.sellTimer < 1 then return end
+        H.sellTimer = 0
+        confirmSales()
+        H.sellPass = H.sellPass + 1
+        local again = H.sellPass <= 3 and H.JunkSlots() or {}
+        if #again == 0 then H.FinishSale() else H.sellQueue = again end
+        return
+    end
     if H.sellTimer < .15 then return end
     H.sellTimer = 0
     local row = table.remove(H.sellQueue)
-    if not row then H.FinishSale(); return end
     local api = _G.C_Container
     local info = A.Call(api.GetContainerItemInfo, row.bag, row.slot)
     if type(info) == "table" and info.quality == 0 and info.hyperlink == row.link then
+        H.sellSent[#H.sellSent + 1] = {bag = row.bag, slot = row.slot, link = row.link, value = sellPrice(row.link) * (info.stackCount or 1)}
         A.Call(api.UseContainerItem, row.bag, row.slot)
-        H.sellCount = H.sellCount + 1
-        H.sellTotal = H.sellTotal + sellPrice(row.link) * (info.stackCount or 1)
     end
 end
 
@@ -147,22 +187,40 @@ end
 local function crossing(key, low, message)
     local was = H.states[key]
     H.states[key] = low
-    if low and not was then alert(message) end
+    if low and not was then
+        alert(message)
+        -- The game's raid warning sound, only if asked for.
+        if db().warnSound then A.PlaySound(8959) end
+    end
+    if low ~= was and NS.Reminders then NS.Reminders.Invalidate() end
 end
 
-function H.CheckDurability()
-    if not warning("warnDurability") then H.states.durability = nil; return end
-    local lowest
+-- Lowest durability plus every damaged slot, lowest first.
+function H.DurabilityInfo()
+    local lowest, rows = nil, {}
     for slot = 1, 18 do
         local current, maximum = A.Call(GetInventoryItemDurability, slot)
         if type(current) == "number" and type(maximum) == "number" and maximum > 0 then
             local percent = current / maximum * 100
             if not lowest or percent < lowest then lowest = percent end
+            if percent < 100 then rows[#rows + 1] = {slot = slot, percent = percent} end
         end
     end
+    table.sort(rows, function(a, b) return a.percent < b.percent end)
+    return lowest, rows
+end
+
+function H.CheckDurability()
+    if not warning("warnDurability") then H.states.durability = nil; return end
+    local lowest, rows = H.DurabilityInfo()
     if not lowest then return end
+    local name
+    if rows[1] then
+        local link = A.Call(GetInventoryItemLink, "player", rows[1].slot)
+        if type(link) == "string" then name = link end
+    end
     crossing("durability", lowest <= db().durabilityPercent,
-        string.format(tr("Ausrüstung bei %d %% Haltbarkeit.", "Equipment at %d%% durability."), math.floor(lowest + .5)))
+        string.format(tr("Ausrüstung bei %d %% Haltbarkeit.", "Equipment at %d%% durability."), math.floor(lowest + .5)) .. (name and (" " .. name) or ""))
 end
 
 function H.CheckBags()
@@ -188,11 +246,17 @@ local function firesAmmo()
 end
 
 function H.CheckAmmo()
-    if not warning("warnAmmo") or not firesAmmo() then H.states.ammo = nil; return end
+    if not warning("warnAmmo") or not firesAmmo() then H.states.ammo = nil; H.ammoCount = nil; return end
     -- An empty ammo slot reports item 0 with a count of 1 on this client.
-    if (tonumber(A.Call(GetInventoryItemID, "player", 0)) or 0) <= 0 then H.states.ammo = nil; return end
-    local count = tonumber(A.Call(GetInventoryItemCount, "player", 0)) or 0
-    crossing("ammo", count <= 100, string.format(tr("Nur noch %d Schuss Munition.", "Only %d rounds of ammo left."), count))
+    local equipped = 0
+    if (tonumber(A.Call(GetInventoryItemID, "player", 0)) or 0) > 0 then
+        equipped = tonumber(A.Call(GetInventoryItemCount, "player", 0)) or 0
+    end
+    -- All matching ammo in the bags counts, not only the kind in the ammo slot.
+    local count = math.max(equipped, NS.AutoBuy.AmmoInBags(NS.AutoBuy.ProjectileClass()))
+    if count <= 0 then H.states.ammo = nil; H.ammoCount = nil; return end
+    H.ammoCount = count
+    crossing("ammo", count <= db().ammoThreshold, string.format(tr("Nur noch %d Schuss Munition.", "Only %d rounds of ammo left."), count))
 end
 
 -- Only warns about a poison that was on the weapon before, so nobody without poisons is nagged.
@@ -236,6 +300,7 @@ function H.ScheduleScreenshot()
     local now = A.Call(GetTime) or 0
     if H.lastShot and now - H.lastShot < 5 then return end
     H.lastShot, H.shotTimer = now, 1.5
+    NS.App:WakeTick()
 end
 
 function H.ShotStep(dt)
@@ -332,6 +397,7 @@ function H.Pull(argument)
     local party = _G.C_PartyInfo
     if party and party.DoCountdown and A.Call(party.DoCountdown, seconds) == true then return end
     H.pull = {left = seconds, timer = 0, channel = channel}
+    NS.App:WakeTick()
     A.Call(SendChatMessage, string.format(tr("Pull in %d Sekunden.", "Pull in %d seconds."), seconds), channel)
 end
 
@@ -396,12 +462,22 @@ end
 ----------------------------------------------------------------------
 function H.Tick(dt)
     H.SellStep(dt); H.ShotStep(dt); H.PullStep(dt)
-    H.slow = (H.slow or 0) + dt
-    if H.slow >= 5 then H.slow = 0; H.CheckPoison() end
+    if H.PollsPoison() then
+        H.slow = (H.slow or 0) + dt
+        if H.slow >= 5 then H.slow = 0; H.CheckPoison() end
+    end
+end
+
+-- The weapon enchant has no dependable event, so only a rogue with the warning on keeps polling.
+function H.PollsPoison() return warning("warnPoison") and A.PlayerClass() == "ROGUE" end
+
+function H.Busy()
+    return H.sellQueue ~= nil or H.shotTimer ~= nil or H.pull ~= nil or H.PollsPoison()
 end
 
 function H.Event(event, ...)
     if event == "MERCHANT_SHOW" then H.MerchantOpened()
+    elseif event == "PLAYER_MONEY" then H.MoneyChanged()
     elseif event == "MERCHANT_CLOSED" then H.MerchantClosed()
     elseif event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" or event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then H.QuestEvent(event)
     elseif event == "UPDATE_INVENTORY_DURABILITY" then H.CheckDurability()

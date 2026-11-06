@@ -141,14 +141,40 @@ end
 ----------------------------------------------------------------------
 -- Quests: never picks between rewards and never pays gold for a quest.
 ----------------------------------------------------------------------
+
+-- One conversation: each quest is answered once per step, whatever events the dialog repeats.
+local function once(step, questID)
+    local npc = A.Call(UnitGUID, "npc")
+    local now = tonumber(A.Call(GetTime)) or 0
+    if npc ~= H.questNpc or not H.questAt or now - H.questAt > 30 then H.questSeen = {} end
+    H.questNpc, H.questAt = npc, now
+    if not questID then return true end
+    local key = step .. ":" .. questID
+    if H.questSeen[key] then return false end
+    H.questSeen[key] = true
+    return true
+end
+
+local function bandAllowed(level, trivial)
+    local playerLevel = A.Call(UnitLevel, "player")
+    return L.QuestBandAllowed(db().questDifficulty, L.QuestBand(level, playerLevel, trivial))
+end
+
+local function detailAllowed(questID)
+    local api = _G.C_QuestLog
+    if not questID or not api then return true end
+    return bandAllowed(A.Call(api.GetQuestDifficultyLevel, questID), A.Call(api.IsQuestTrivial, questID))
+end
+
 function H.QuestEvent(event)
     if shiftHeld() then return end
+    local questID = A.Call(GetQuestID)
     if event == "QUEST_DETAIL" then
-        if comfort("questAccept") then A.Call(AcceptQuest) end
+        if comfort("questAccept") and detailAllowed(questID) and once("accept", questID) then A.Call(AcceptQuest) end
     elseif event == "QUEST_PROGRESS" then
-        if comfort("questTurnIn") and A.Call(IsQuestCompletable) == true and (tonumber(A.Call(GetQuestMoneyToGet)) or 0) == 0 then A.Call(CompleteQuest) end
+        if comfort("questTurnIn") and A.Call(IsQuestCompletable) == true and (tonumber(A.Call(GetQuestMoneyToGet)) or 0) == 0 and once("progress", questID) then A.Call(CompleteQuest) end
     elseif event == "QUEST_COMPLETE" then
-        if comfort("questTurnIn") and (tonumber(A.Call(GetNumQuestChoices)) or 0) <= 1 then A.Call(GetQuestReward, 1) end
+        if comfort("questTurnIn") and (tonumber(A.Call(GetNumQuestChoices)) or 0) <= 1 and (tonumber(A.Call(GetQuestMoneyToGet)) or 0) == 0 and once("reward", questID) then A.Call(GetQuestReward, 1) end
     elseif event == "GOSSIP_SHOW" then
         H.GossipQuests()
     elseif event == "QUEST_GREETING" then
@@ -161,12 +187,16 @@ function H.GossipQuests()
     if not api then return end
     if comfort("questTurnIn") then
         for _, quest in ipairs(A.Call(api.GetActiveQuests) or {}) do
-            if quest.isComplete then A.Call(api.SelectActiveQuest, quest.questID); return end
+            if quest.isComplete and once("select", quest.questID) then A.Call(api.SelectActiveQuest, quest.questID); return end
         end
     end
     if comfort("questAccept") then
         for _, quest in ipairs(A.Call(api.GetAvailableQuests) or {}) do
-            if not quest.repeatable then A.Call(api.SelectAvailableQuest, quest.questID); return end
+            local repeatOk = db().questRepeatable or not (quest.repeatable or quest.frequency == 1 or quest.frequency == 2)
+            if repeatOk and bandAllowed(quest.questLevel, quest.isTrivial) and once("offer", quest.questID) then
+                A.Call(api.SelectAvailableQuest, quest.questID)
+                return
+            end
         end
     end
 end
@@ -175,10 +205,19 @@ function H.GreetingQuests()
     if comfort("questTurnIn") then
         for index = 1, tonumber(A.Call(GetNumActiveQuests)) or 0 do
             local _, complete = A.Call(GetActiveTitle, index)
-            if complete then A.Call(SelectActiveQuest, index); return end
+            if complete and once("select", "active" .. index) then A.Call(SelectActiveQuest, index); return end
         end
     end
-    if comfort("questAccept") and (tonumber(A.Call(GetNumAvailableQuests)) or 0) > 0 then A.Call(SelectAvailableQuest, 1) end
+    if comfort("questAccept") then
+        for index = 1, tonumber(A.Call(GetNumAvailableQuests)) or 0 do
+            local trivial, frequency, repeatable, _, questID = A.Call(GetAvailableQuestInfo, index)
+            local repeatOk = db().questRepeatable or not (repeatable == true or frequency == 1 or frequency == 2)
+            if repeatOk and bandAllowed(A.Call(GetAvailableLevel, index), trivial) and once("offer", questID or ("greeting" .. index)) then
+                A.Call(SelectAvailableQuest, index)
+                return
+            end
+        end
+    end
 end
 
 ----------------------------------------------------------------------

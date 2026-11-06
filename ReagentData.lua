@@ -19,7 +19,7 @@ NS.ReagentData = {
             {item = 17056, spells = {1706}, economy = true},
         },
         PALADIN = {
-            {item = 21177, spells = {25782, 25894, 25898, 25890, 25895, 25899, 25916, 25918}, economy = true},
+            {item = 21177, spells = {25782, 25916, 25894, 25918, 25898}, economy = true},
             {item = 17033, spells = {19752}, economy = true},
         },
         SHAMAN = {{item = 17030, spells = {20608}, economy = true}},

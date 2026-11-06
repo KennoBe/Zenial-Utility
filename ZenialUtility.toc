@@ -23,7 +23,11 @@ Characters.lua
 Profiles.lua
 ReagentData.lua
 AutoBuy.lua
+BuffData.lua
+Reminders.lua
+Quests.lua
 Widgets.lua
+WarnBars.lua
 RollWindow.lua
 ConfigWizard.lua
 SettingsUI.lua

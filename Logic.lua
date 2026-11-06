@@ -404,6 +404,21 @@ function L.PurchasePlan(wanted, stock, have, money, maxCost)
     return plan, total, skipped
 end
 
+-- Quest colour band: grey below the client's trivial line, green up to three levels under the player.
+function L.QuestBand(level, playerLevel, trivial)
+    if trivial == true then return "gray" end
+    level, playerLevel = tonumber(level), tonumber(playerLevel)
+    if not level or not playerLevel or level <= 0 then return "unknown" end
+    if playerLevel - level >= 3 then return "green" end
+    return "normal"
+end
+
+function L.QuestBandAllowed(mode, band)
+    if mode == "nogray" then return band ~= "gray" end
+    if mode == "nogreen" then return band ~= "gray" and band ~= "green" end
+    return true
+end
+
 -- XP per hour from a session sample; nil until there is something to measure.
 function L.XPRate(gained, seconds)
     gained, seconds = tonumber(gained) or 0, tonumber(seconds) or 0

@@ -23,6 +23,8 @@ function App:ModulesChanged()
 end
 App:AddModule(NS.Characters)
 App:AddModule(NS.AutoBuy)
+App:AddModule(NS.Reminders)
+App:AddModule(NS.Quests)
 
 function App:GraphicsConfirm()
     NS.GraphicsConfirm.Show()

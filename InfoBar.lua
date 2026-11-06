@@ -545,11 +545,12 @@ function I.Rebuild()
     local data = db()
     eventFrame:UnregisterAllEvents()
     clock:SetScript("OnUpdate", nil)
+    -- The bar holds a secure button, so showing or hiding it waits for the end of combat.
+    if A.Combat() then I.rebuildAfterCombat = true; return end
     if data.modInfoBar ~= true then
-        if I.frame and not A.Combat() then I.frame:Hide() end
+        if I.frame then I.frame:Hide() end
         return
     end
-    if A.Combat() then I.rebuildAfterCombat = true; return end
     if not I.frame then createFrame() end
     I.listeners, I.timers = {}, {}
     local anyTimer = false

@@ -6,7 +6,8 @@ local W, L, U, tr = NS.ConfigWizard, NS.Logic, NS.SettingsUI, NS.Text
 -- Only these keys belong to the wizard; everything else in the settings stays as it is.
 local KEYS = {"mapReveal", "mapCoords", "vendorJunk", "vendorRepair", "questAccept", "questTurnIn",
     "warnDurability", "warnBags", "warnAmmo", "warnPoison", "warnReagents", "screenshotLevel", "screenshotBoss",
-    "tooltipPrice", "tooltipIDs", "pullEnabled", "rollTracker"}
+    "tooltipPrice", "tooltipIDs", "pullEnabled", "rollTracker",
+    "modBuffs", "modInfoBar", "bagFreeSlots", "questRewardValue", "fastLoot"}
 
 local function sanitize(raw, current)
     local combined = L.Copy(current)
@@ -74,6 +75,15 @@ function S.Initialize(fresh)
         v:Check(p, "screenshotBoss", tr("Screenshot beim Bosskill", "Screenshot on boss kill"), 0, -108)
         v:Check(p, "rollTracker", tr("Würfe von /roll mitschreiben", "Track /roll results"), 0, -144)
     end)
+    page("Neue Anzeigen", "New displays",
+        "Diese Helfer zeigen etwas Neues auf dem Bildschirm und bleiben aus, bis du sie wählst.",
+        "These helpers show something new on screen and stay off until you choose them.", 190, function(v, p)
+        v:Check(p, "modBuffs", tr("Warnleisten für Buffs und Verbrauchsmaterial", "Warning bars for buffs and consumables"), 0, 0)
+        v:Check(p, "modInfoBar", tr("Infoleiste mit Gold, Zeit, Ort und mehr", "Info bar with gold, time, location and more"), 0, -36)
+        v:Check(p, "bagFreeSlots", tr("Freie Plätze auf den Taschenbuttons", "Free slots on the bag buttons"), 0, -72)
+        v:Check(p, "questRewardValue", tr("Händlerwert auf Questbelohnungen", "Vendor value on quest rewards"), 0, -108)
+        v:Check(p, "fastLoot", tr("Automatisches Plündern beschleunigen", "Speed up auto loot"), 0, -144)
+    end)
     page("Bereit", "Ready",
         "Prüfe deine Auswahl. Alles lässt sich jederzeit unter /zutil ändern.",
         "Check your choices. Everything can be changed at any time under /zutil.", 170, function(v, p)
@@ -86,6 +96,7 @@ function S.Initialize(fresh)
                 tr("Karte aufdecken: ", "Reveal map: ") .. ((reveal == "off" and tr("Aus", "Off")) or (reveal == "soft" and tr("Halbtransparent", "Translucent")) or tr("Voll", "Full")),
                 tr("Müll verkaufen / Reparieren: ", "Sell junk / repair: ") .. on(v.draft.vendorJunk) .. " / " .. on(v.draft.vendorRepair),
                 tr("Quests annehmen / abgeben: ", "Accept / turn in quests: ") .. on(v.draft.questAccept) .. " / " .. on(v.draft.questTurnIn),
+                tr("Warnleisten / Infoleiste: ", "Warning bars / info bar: ") .. on(v.draft.modBuffs) .. " / " .. on(v.draft.modInfoBar),
             }, "\n\n"))
         end)
     end)

@@ -12,12 +12,22 @@ local ICONS = {
     warnings = "Interface\\Icons\\INV_Misc_PocketWatch_01",
     extras = "Interface\\Icons\\INV_Misc_Dice_01",
     characters = "Interface\\Icons\\Trade_Engineering",
+    buffs = "Interface\\Icons\\Spell_Holy_WordFortitude",
+    infobar = "Interface\\Icons\\INV_Misc_Note_02",
+    merchant = "Interface\\Icons\\INV_Misc_Bag_10",
+    tooltip = "Interface\\Icons\\INV_Misc_Book_11",
+    inventory = "Interface\\Icons\\INV_Misc_Bag_08",
+    interface = "Interface\\Icons\\INV_Misc_Gear_01",
+    profiles = "Interface\\Icons\\INV_Misc_Note_05",
 }
-U.Order = {"overview", "macros", "graphics", "map", "comfort", "warnings", "extras", "characters"}
+U.Order = {"overview", "macros", "graphics", "map", "comfort", "merchant", "warnings", "buffs", "infobar", "tooltip", "inventory", "interface", "extras", "characters", "profiles"}
 U.Titles = {
     overview = tr("Übersicht", "Overview"), macros = tr("Makros", "Macros"), graphics = tr("Grafik", "Graphics"),
     map = tr("Karte", "Map"), comfort = tr("Komfort", "Comfort"), warnings = tr("Warnungen", "Warnings"),
     extras = tr("Extras", "Extras"), characters = tr("Charaktere", "Characters"),
+    buffs = tr("Buffs", "Buffs"), infobar = tr("Infoleiste", "Info bar"), merchant = tr("Händler", "Merchant"),
+    tooltip = tr("Tooltips", "Tooltips"), inventory = tr("Inventar", "Inventory"), interface = tr("Oberfläche", "Interface"),
+    profiles = tr("Profile", "Profiles"),
 }
 
 local function db() return NS.App.db end
@@ -68,6 +78,34 @@ local CARDS = {
         text = tr("Automatische Screenshots, Preise und IDs im Tooltip, Pull-Countdown und Würfel-Liste.",
             "Automatic screenshots, prices and IDs in tooltips, pull countdown and roll list."),
         status = function() return enabledText({"screenshotLevel", "screenshotBoss", "tooltipIDs", "tooltipPrice", "pullEnabled", "rollTracker"}) end},
+    {page = "buffs", title = U.Titles.buffs, toggle = "modBuffs",
+        text = tr("Warnleisten für fehlende und auslaufende Buffs, Gifte, Waffenverzauberungen und Verbrauchsmaterial.",
+            "Warning bars for missing and expiring buffs, poisons, weapon enchants and consumables."),
+        status = function() return #NS.Reminders.items > 0 and string.format(tr("%d Warnungen aktiv", "%d warnings active"), #NS.Reminders.items) or tr("Nichts offen", "Nothing open") end},
+    {page = "infobar", title = U.Titles.infobar, toggle = "modInfoBar",
+        text = tr("Frei platzierbare Leiste mit Gold, Zeit, Ort, Haltbarkeit, Taschen und vielem mehr.",
+            "Movable bar with gold, time, location, durability, bags and much more."),
+        status = function() return db().modInfoBar and tr("Sichtbar", "Visible") or tr("Aus", "Off") end},
+    {page = "merchant", title = U.Titles.merchant,
+        text = tr("Reagenzien, Giftzutaten und Munition nachkaufen, mit Kosten vorab. Eigene Listen pro Charakter.",
+            "Restock reagents, poison ingredients and ammo, with costs shown first. Own lists per character."),
+        status = function() return NS.AutoBuy.Settings().enabled and tr("Einkaufsliste an", "Shopping list on") or tr("Aus", "Off") end},
+    {page = "tooltip", title = U.Titles.tooltip, toggle = "modTooltip",
+        text = tr("Charakter-Tooltips anpassen, Position, Lebensbalken und nötige Sammelfertigkeit.",
+            "Adjust character tooltips, position, health bar and gathering skill needed."),
+        status = function() return enabledText({"ttUnit", "ttGathering", "ttItemLevel"}) end},
+    {page = "inventory", title = U.Titles.inventory, toggle = "modInventory",
+        text = tr("Freie Plätze auf Taschen, XP-Zahlen, Twinks als Postempfänger und Grauen gezielt zerstören.",
+            "Free slots on bags, XP numbers, alts as mail recipients and destroying grey items on purpose."),
+        status = function() return enabledText({"bagFreeSlots", "bagMove", "xpText", "mailAlts", "destroyGray"}) end},
+    {page = "interface", title = U.Titles.interface, toggle = "modQoL",
+        text = tr("Schnelleres Plündern, Dialoge überspringen, Fehlerfilter und Oberflächenelemente ausblenden.",
+            "Faster looting, skipping dialogs, error filter and hiding interface elements."),
+        status = function() return enabledText({"fastLoot", "lootGreed", "skipGossip", "declineDuels", "bgRelease", "errorFilter"}) end},
+    {page = "profiles", title = U.Titles.profiles,
+        text = tr("Benannte Einstellungen für alle Charaktere, als Text teilbar.",
+            "Named settings for all characters, shareable as text."),
+        status = function() return tr("Aktiv: ", "Active: ") .. NS.Profiles.Active() end},
     {page = "characters", title = U.Titles.characters,
         text = tr("Spielzeit aller Charaktere sehen und Charakter-Makros auf einen Twink übertragen.",
             "See the playtime of all characters and carry character macros over to an alt."),
@@ -124,6 +162,18 @@ function U.builders.overview(v, p)
     return -y + 40
 end
 
+-- Search reads every text a page writes. Page texts only exist once a page is built,
+-- so the first search builds all pages. They stay hidden until selected.
+function U.Note(v, text)
+    if type(text) ~= "string" or not v.building then return end
+    v.searchTexts[#v.searchTexts + 1] = {page = v.building, text = text, low = text:lower()}
+end
+
+local function section(v, p, title, y)
+    U.Note(v, title)
+    return W.Section(p, title, y)
+end
+
 local function checks(v, p, y, rows)
     for _, row in ipairs(rows) do
         v:Check(p, row[1], row[2], 0, y, nil, 520)
@@ -137,12 +187,12 @@ local function checks(v, p, y, rows)
 end
 
 function U.builders.map(v, p)
-    W.Section(p, tr("Karte aufdecken", "Reveal map"), 0)
+    section(v, p, tr("Karte aufdecken", "Reveal map"), 0)
     v:Label(p, tr("Zeigt Gebiete, in denen du noch nicht warst. Das ändert nur die Anzeige: Erkundung, Erfahrung und Erfolge bleiben unberührt.",
         "Shows areas you have not visited yet. This only changes the display: exploration, experience and achievements stay untouched."), 0, -28, 552, 36, "GameFontHighlightSmall", "muted")
     v:Dropdown(p, "mapReveal", 0, -68, 300, {{"off", tr("Aus", "Off")}, {"soft", tr("Halbtransparent", "Translucent")}, {"full", tr("Voll aufgedeckt", "Fully revealed")}})
     v:Number(p, "revealAlpha", tr("Deckkraft bei halbtransparent", "Opacity when translucent"), -106, .2, 1, .05)
-    W.Section(p, tr("Koordinaten und Wegpunkte", "Coordinates and waypoints"), -188)
+    section(v, p, tr("Koordinaten und Wegpunkte", "Coordinates and waypoints"), -188)
     local y = checks(v, p, -216, {
         {"mapCoords", tr("Koordinaten auf der Weltkarte anzeigen", "Show coordinates on the world map")},
         {"waypoints", tr("Wegpunkte per Befehl setzen", "Set waypoints by command"),
@@ -154,31 +204,39 @@ function U.builders.map(v, p)
 end
 
 function U.builders.comfort(v, p)
-    W.Section(p, tr("Beim Händler", "At vendors"), 0)
+    section(v, p, tr("Beim Händler", "At vendors"), 0)
     local y = checks(v, p, -28, {
         {"vendorJunk", tr("Graue Gegenstände automatisch verkaufen", "Sell grey items automatically"), tr("Shift beim Öffnen des Händlers überspringt alles einmalig.", "Holding Shift when opening the vendor skips everything once.")},
         {"vendorRepair", tr("Automatisch reparieren", "Repair automatically")},
         {"vendorGuildRepair", tr("Zuerst aus der Gildenbank reparieren", "Repair from the guild bank first")},
         {"vendorChat", tr("Betrag im Chat anzeigen", "Show the amount in chat")},
     })
-    W.Section(p, tr("Quests", "Quests"), y - 10)
+    section(v, p, tr("Quests", "Quests"), y - 10)
     y = checks(v, p, y - 38, {
         {"questAccept", tr("Quests automatisch annehmen", "Accept quests automatically")},
         {"questTurnIn", tr("Fertige Quests automatisch abgeben", "Turn in finished quests automatically"), tr("Bei mehreren Belohnungen wählst du selbst. Quests, die Gold kosten, bleiben stehen. Shift pausiert.", "With several rewards you choose yourself. Quests that cost gold are left alone. Shift pauses.")},
+        {"questRepeatable", tr("Wiederholbare Quests mit annehmen", "Also accept repeatable quests")},
+        {"questRewardValue", tr("Händlerwert auf den Belohnungen anzeigen", "Show vendor value on rewards"), tr("Nur eine Anzeige: Ausgewählt wird nie etwas für dich.", "Only a display: nothing is ever chosen for you.")},
+        {"questZoneTrack", tr("Gebiet-Häkchen im Questlog", "Zone checkbox in the quest log"), tr("Verfolgt alle Quests eines Gebiets, auch eingeklappt, bis zum Limit der Questverfolgung.", "Tracks all quests of a zone, also collapsed, up to the tracker's limit.")},
     })
+    v:Label(p, tr("Annehmen bis", "Accept up to"), 0, y - 5, 200, 24)
+    v:Dropdown(p, "questDifficulty", 210, y, 300, {{"all", tr("Alle Schwierigkeiten", "All difficulties")}, {"nogray", tr("Ohne graue Quests", "Without grey quests")}, {"nogreen", tr("Ohne graue und grüne Quests", "Without grey and green quests")}})
+    y = y - 36
     return -y + 20
 end
 
 function U.builders.warnings(v, p)
-    W.Section(p, tr("Wann soll Utility warnen?", "When should Utility warn?"), 0)
+    section(v, p, tr("Wann soll Utility warnen?", "When should Utility warn?"), 0)
     v:Label(p, tr("Jede Warnung erscheint einmal, wenn der Grenzwert erreicht wird, und erst nach einer Erholung wieder.",
         "Each warning appears once when its limit is reached, and again only after recovering."), 0, -28, 552, 36, "GameFontHighlightSmall", "muted")
     local y = checks(v, p, -66, {{"warnDurability", tr("Niedrige Haltbarkeit", "Low durability")}})
     v:Number(p, "durabilityPercent", tr("Warnen ab (%)", "Warn at (%)"), y, 5, 50, 5)
     y = checks(v, p, y - 70, {{"warnBags", tr("Fast volle Taschen", "Nearly full bags")}})
     v:Number(p, "bagSlots", tr("Warnen ab freien Plätzen", "Warn at free slots"), y, 1, 20, 1)
+    y = checks(v, p, y - 70, {{"warnSound", tr("Warnton spielen", "Play a warning sound")}})
+    y = checks(v, p, y, {{"warnAmmo", tr("Wenig Munition", "Low ammo"), tr("Zählt alle passende Munition in den Taschen.", "Counts all matching ammo in your bags.")}})
+    v:Number(p, "ammoThreshold", tr("Warnen ab Schuss", "Warn at rounds"), y, 10, 5000, 10)
     y = checks(v, p, y - 70, {
-        {"warnAmmo", tr("Wenig Munition", "Low ammo")},
         {"warnPoison", tr("Abgelaufenes Waffengift (Schurke)", "Expired weapon poison (Rogue)")},
         {"warnReagents", tr("Reagenzien gehen aus", "Reagents running out"), tr("Nur für Reagenzien, die du tatsächlich bei dir hattest.", "Only for reagents you actually carried.")},
     })
@@ -186,21 +244,21 @@ function U.builders.warnings(v, p)
 end
 
 function U.builders.extras(v, p)
-    W.Section(p, tr("Screenshots", "Screenshots"), 0)
+    section(v, p, tr("Screenshots", "Screenshots"), 0)
     local y = checks(v, p, -28, {
         {"screenshotLevel", tr("Screenshot beim Levelaufstieg", "Screenshot on level up")},
         {"screenshotBoss", tr("Screenshot beim Bosskill", "Screenshot on boss kill")},
     })
-    W.Section(p, tr("Tooltips", "Tooltips"), y - 10)
+    section(v, p, tr("Tooltips", "Tooltips"), y - 10)
     y = checks(v, p, y - 38, {
         {"tooltipPrice", tr("Verkaufspreis und Stapelwert anzeigen", "Show sell price and stack value")},
         {"tooltipIDs", tr("Item- und Zauber-IDs anzeigen", "Show item and spell IDs")},
     })
-    W.Section(p, tr("Pull-Countdown", "Pull countdown"), y - 10)
+    section(v, p, tr("Pull-Countdown", "Pull countdown"), y - 10)
     y = checks(v, p, y - 38, {{"pullEnabled", tr("Befehl /zpull aktivieren", "Enable the /zpull command"), tr("/zpull 10 startet, /zpull stop bricht ab. Nutzt den Countdown des Spiels, sonst den Gruppenchat.", "/zpull 10 starts, /zpull stop cancels. Uses the game's countdown, otherwise group chat.")}})
     v:Number(p, "pullSeconds", tr("Standarddauer (s)", "Default length (s)"), y, 3, 30, 1)
     y = y - 70
-    W.Section(p, tr("Würfel-Liste", "Roll list"), y)
+    section(v, p, tr("Würfel-Liste", "Roll list"), y)
     y = checks(v, p, y - 28, {{"rollTracker", tr("Würfe von /roll mitschreiben", "Track /roll results")}})
     v.rollLabel = v:Label(p, "", 0, y, 552, 104, "GameFontHighlightSmall")
     v:Button(p, tr("Liste leeren", "Clear list"), 0, y - 110, 150, function() NS.Helpers.ClearRolls() end, "secondary")
@@ -211,12 +269,12 @@ function U.builders.extras(v, p)
 end
 
 function U.builders.characters(v, p)
-    W.Section(p, tr("Spielzeit", "Playtime"), 0)
+    section(v, p, tr("Spielzeit", "Playtime"), 0)
     v.playedLabel = v:Label(p, "", 0, -28, 552, 150, "GameFontHighlightSmall")
     v:Button(p, tr("Spielzeit aktualisieren", "Update playtime"), 0, -184, 220, function() A.Call(RequestTimePlayed) end, "secondary")
     v:Label(p, tr("Erfasst wird, wenn du hier klickst oder /played nutzt. Das Spiel schreibt den Wert zusätzlich in den Chat.",
         "Recorded when you click here or use /played. The game also prints the value to chat."), 232, -184, 320, 36, "GameFontHighlightSmall", "muted")
-    W.Section(p, tr("Charakter-Makros übertragen", "Carry over character macros"), -232)
+    section(v, p, tr("Charakter-Makros übertragen", "Carry over character macros"), -232)
     v:Label(p, tr("Sichert die Makros dieses Charakters im Addon. Auf einem anderen Charakter übernimmst du sie dann hier. Vorhandene Namen bleiben unberührt.",
         "Saves this character's macros in the addon. You then import them here on another character. Existing names stay untouched."), 0, -260, 552, 36, "GameFontHighlightSmall", "muted")
     v:Button(p, tr("Makros dieses Charakters sichern", "Save this character's macros"), 0, -300, 290, function()
@@ -298,6 +356,12 @@ function U.Create(parent, embedded)
     end
     local v = NS.ConfigWizard.New({store = {}})
     v.frame, v.embedded, v.draft = f, embedded, NS.App.db
+    v.searchTexts = {}
+    local baseLabel = v.Label
+    function v:Label(parent, value, ...)
+        U.Note(self, value)
+        return baseLabel(self, parent, value, ...)
+    end
     function v:SetMessage(message) self.message:SetText(message or "") end
     function v:Changed() NS.App.db = self.draft; NS.App:Changed() end
     local left = embedded and 16 or 172
@@ -315,14 +379,15 @@ function U.Create(parent, embedded)
         local id = key
         local button = T.Button(f, U.Titles[key], embedded and 98 or 140, 30, function() v:SelectPage(id) end, "secondary")
         if embedded then
-            button:SetPoint("TOPLEFT", 12 + (index - 1) * 102, -8)
+            -- Two rows of eight fit the Community canvas.
+            button:SetPoint("TOPLEFT", 12 + (index - 1) % 8 * 102, -8 - math.floor((index - 1) / 8) * 34)
         else
             button:SetPoint("TOPLEFT", 18, -80 - (index - 1) * 36)
             T.StyleNav(button, ICONS[key])
         end
         v.nav[key] = button
     end
-    local top = embedded and -46 or -80
+    local top = -80
     local bottom = embedded and 24 or 40
     local scroll = CreateFrame("ScrollFrame", nil, f)
     scroll:SetPoint("TOPLEFT", left, top)
@@ -339,28 +404,41 @@ function U.Create(parent, embedded)
     fixed:SetPoint("BOTTOMRIGHT", embedded and -16 or -20, bottom)
     fixed:Hide()
     v.fixedHost = fixed
+    -- Search box: on the free spot of the second tab row, or in the title bar of the own window.
+    local search = W.Edit(f, 0, 0, embedded and 98 or 220, function(text) U.ShowSearch(v, text) end)
+    search:ClearAllPoints()
+    if embedded then search:SetPoint("TOPLEFT", 12 + 7 * 102, -42)
+    else search:SetPoint("TOPRIGHT", -60, -26) end
+    W.Tooltip(search, tr("Einstellungen suchen", "Search settings"), tr("Tippe ein Stichwort, zum Beispiel „Gift“ oder „Reparieren“.", "Type a word, for example “poison” or “repair”."))
+    v.search = search
+    v.searchHint = T.Text(search, tr("Suchen …", "Search …"), "GameFontHighlightSmall", "muted")
+    v.searchHint:SetPoint("LEFT", 8, 0)
+    local results = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    results:SetSize(380, 40)
+    results:SetPoint("TOPRIGHT", search, "BOTTOMRIGHT", 0, -2)
+    results:SetFrameStrata("FULLSCREEN_DIALOG")
+    results:EnableMouse(true)
+    T.Panel(results, "surface")
+    results:Hide()
+    v.searchResults = results
+    results.rows = {}
+    for index = 1, 8 do
+        local row = T.Button(results, "", 364, 24, function(self)
+            results:Hide()
+            v.search:SetText("")
+            v:SelectPage(self.page)
+        end, "secondary")
+        row:SetPoint("TOPLEFT", 8, -6 - (index - 1) * 26)
+        row:Hide()
+        results.rows[index] = row
+    end
     function v:SelectPage(id)
         self:CloseTransient()
         self.index, self.draft = id, NS.App.db
         self:SetMessage("")
         for _, page in pairs(self.pages) do page:Hide() end
         local isFixed = U.fixed[id] ~= nil
-        if not self.pages[id] then
-            self.updates[id] = {}
-            if isFixed then
-                local page = CreateFrame("Frame", nil, fixed)
-                page:SetAllPoints(fixed)
-                self.pages[id] = page
-                U.fixed[id](self, page)
-            else
-                local page = CreateFrame("Frame", nil, self.content)
-                page:SetPoint("TOPLEFT", 12, -12)
-                page:SetWidth(552)
-                self.pages[id] = page
-                page.height = U.builders[id](self, page)
-                page:SetHeight(page.height)
-            end
-        end
+        self:BuildPage(id)
         self.pages[id]:Show()
         scroll:SetShown(not isFixed)
         fixed:SetShown(isFixed)
@@ -372,6 +450,50 @@ function U.Create(parent, embedded)
         end
         for key, button in pairs(self.nav) do T.SetSelected(button, key == id) end
         self:Refresh()
+    end
+    function v:BuildPage(id)
+        if self.pages[id] then return end
+        local index = self.index
+        self.index = id
+        self.updates[id] = {}
+        self.building = id
+        if U.fixed[id] ~= nil then
+            local page = CreateFrame("Frame", nil, fixed)
+            page:SetAllPoints(fixed)
+            self.pages[id] = page
+            U.fixed[id](self, page)
+        else
+            local page = CreateFrame("Frame", nil, self.content)
+            page:SetPoint("TOPLEFT", 12, -12)
+            page:SetWidth(552)
+            self.pages[id] = page
+            page.height = U.builders[id](self, page)
+            page:SetHeight(page.height)
+        end
+        self.building = nil
+        self.pages[id]:Hide()
+        self.index = index
+    end
+    -- All matches of a word, each page once per text, the title of a page first.
+    function v:Search(text)
+        text = (text or ""):match("^%s*(.-)%s*$"):lower()
+        if text == "" then return {} end
+        for _, id in ipairs(U.Order) do self:BuildPage(id) end
+        local out, seen = {}, {}
+        for _, id in ipairs(U.Order) do
+            if U.Titles[id]:lower():find(text, 1, true) then
+                out[#out + 1] = {page = id, text = U.Titles[id]}
+                seen[id .. U.Titles[id]] = true
+            end
+        end
+        for _, row in ipairs(self.searchTexts) do
+            local key = row.page .. row.text
+            if not seen[key] and row.low:find(text, 1, true) then
+                seen[key] = true
+                out[#out + 1] = {page = row.page, text = row.text}
+            end
+        end
+        return out
     end
     function v:RefreshData() U.RefreshPageData(self) end
     function v:Refresh()
@@ -385,6 +507,24 @@ function U.Create(parent, embedded)
     v:SelectPage("overview")
     f:Hide()
     return v
+end
+
+function U.ShowSearch(v, text)
+    v.searchHint:SetShown(text == "")
+    local results = v.searchResults
+    local rows = v:Search(text)
+    for index, button in ipairs(results.rows) do
+        local row = rows[index]
+        button.page = row and row.page
+        if row then
+            local shown = L.TrimUTF8(row.text, 48)
+            if shown ~= row.text then shown = shown .. "…" end
+            button:SetText(U.Titles[row.page] .. ": " .. shown)
+        end
+        button:SetShown(row ~= nil)
+    end
+    results:SetHeight(math.min(#rows, 8) * 26 + 12)
+    results:SetShown(#rows > 0)
 end
 
 function U.Refresh() for _, v in ipairs(U.views) do v:Refresh() end end

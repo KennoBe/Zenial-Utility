@@ -69,6 +69,14 @@ function R.SetBar(key, bar)
     db().reminders[key] = row
 end
 
+-- Empty means automatic by duration.
+function R.SetWarn(key, seconds)
+    local row = db().reminders[key] or {}
+    seconds = tonumber(seconds)
+    row.warn = seconds and seconds > 0 and math.min(3600, math.floor(seconds)) or nil
+    db().reminders[key] = row
+end
+
 -- Deleted bars hand their entries to the general bar, which can't be deleted.
 function R.DeleteBar(id)
     if id == L.GeneralBar then return false end
@@ -123,7 +131,7 @@ local function isLearned(entry)
     if entry.tracking then return isKnownAny(entry.tracking) end
     if entry.learn then return isKnownAny(entry.learn) end
     -- Consumables and camp benefits are not spells the player learns.
-    if entry.exact or entry.kind == "weapon" then return true end
+    if entry.exact or entry.free or entry.kind == "weapon" then return true end
     for _, chain in ipairs(entry.ranks or {}) do
         if learnedRankIndex(chain) then return true end
     end

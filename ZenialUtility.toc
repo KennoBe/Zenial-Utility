@@ -37,6 +37,7 @@ ConfigWizard.lua
 SettingsUI.lua
 SettingsMacros.lua
 SettingsGraphics.lua
+SettingsPages.lua
 Setup.lua
 Core.lua
 Launcher.lua

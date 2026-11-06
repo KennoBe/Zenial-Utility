@@ -59,7 +59,7 @@ NS.BuffData = {
     },
     -- Nothing here is on until chosen. Matched by exact spell ID, because many names are generic.
     consumables = {
-        {key = "food", exact = true, de = "Satt (Essen)", en = "Well Fed (food)", ranks = {{19705, 19706, 19708, 19709, 19710, 19711, 24799, 24870, 25694, 25941, 1225778, 1225779, 1225780, 1225782}}},
+        {key = "food", free = true, de = "Satt (Essen)", en = "Well Fed (food)", ranks = {{19705}}},
         {key = "flask_titans", exact = true, ranks = {{17626}}},
         {key = "flask_wisdom", exact = true, ranks = {{17627}}},
         {key = "flask_power", exact = true, ranks = {{17628}}},

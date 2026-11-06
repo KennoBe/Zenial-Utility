@@ -79,7 +79,9 @@ function C.PlayerDead()
     local inside, kind = A.Call(IsInInstance)
     if inside ~= true or kind ~= "pvp" then return end
     -- A soulstone is the player's choice to make.
-    if A.Call(HasSoulstone) then return end
+    local death = _G.C_DeathInfo
+    local options = death and A.Call(death.GetSelfResurrectOptions)
+    if type(options) == "table" and #options > 0 then return end
     A.Call(RepopMe)
 end
 

@@ -259,7 +259,7 @@ function V.Destroy(row)
     if A.Call(GetCursorInfo) ~= nil then return false end
     -- The stack must still be the one that was shown.
     local info = A.Call(api.GetContainerItemInfo, row.bag, row.slot)
-    if type(info) ~= "table" or info.hyperlink ~= row.link or info.isLocked then return false end
+    if type(info) ~= "table" or info.hyperlink ~= row.link or info.isLocked or (info.stackCount or 1) ~= row.count then return false end
     A.Call(api.PickupContainerItem, row.bag, row.slot)
     local kind, id = A.Call(GetCursorInfo)
     if kind ~= "item" or (row.item and id ~= row.item) then

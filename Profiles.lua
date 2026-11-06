@@ -4,6 +4,8 @@ NS.Profiles = P
 local A, L, tr = NS.Adapter, NS.Logic, NS.Text
 
 P.DefaultName = "Default"
+-- As many as the settings page can list.
+P.MaxProfiles = 10
 
 local function db() return NS.App.db end
 
@@ -82,6 +84,7 @@ function P.Create(name, from)
     name = validName(name)
     if not name then return false, "name" end
     if data.profiles[name] then return false, "exists" end
+    if #P.Names() >= P.MaxProfiles then return false, "full" end
     P.Store()
     data.profiles[name] = L.Copy(data.profiles[from or P.Active()])
     return true, name
@@ -106,6 +109,7 @@ function P.Delete(name)
     local data = db()
     if name == P.DefaultName then return false, "default" end
     if not data.profiles[name] then return false, "missing" end
+    if A.Combat() then return false, "combatRefused" end
     if name == P.Active() then
         local ok, reason = P.Switch(P.DefaultName)
         if not ok then return false, reason end
@@ -139,6 +143,7 @@ end
 function P.Import(text)
     local name, snapshot = L.ImportText(text)
     if not name then return false, snapshot end
+    if #P.Names() >= P.MaxProfiles then return false, "full" end
     local data, target, number = db(), name, 2
     while data.profiles[target] do
         target = L.TrimUTF8(name, 36) .. " " .. number
@@ -155,6 +160,8 @@ function P.ReasonText(reason)
         default = tr("Das Standardprofil bleibt bestehen.", "The default profile stays."),
         missing = tr("Dieses Profil gibt es nicht.", "This profile does not exist."),
         combat = tr("Wird nach dem Kampf ausgeführt.", "This happens after combat."),
+        combatRefused = tr("Im Kampf nicht möglich.", "Not possible in combat."),
+        full = tr("Mehr als zehn Profile sind nicht möglich.", "No more than ten profiles are possible."),
         format = tr("Das ist kein ZENIAL-Utility-Profiltext.", "This is not a ZENIAL Utility profile text."),
         damaged = tr("Der Profiltext ist beschädigt und wurde nicht übernommen.", "The profile text is damaged and was not imported."),
     }

@@ -153,6 +153,16 @@ local function setMouse(frame, value, memory)
     end
 end
 
+local function hasProtected(frame)
+    if frame.IsProtected and frame:IsProtected() then return true end
+    if frame.GetChildren then
+        for _, child in ipairs({frame:GetChildren()}) do
+            if hasProtected(child) then return true end
+        end
+    end
+    return false
+end
+
 local function setVisible(key, frame, visible)
     local state = C.hidden[key]
     if not state then
@@ -161,7 +171,7 @@ local function setVisible(key, frame, visible)
     end
     if state.visible == visible then return true end
     -- A protected frame can't change its mouse state in combat. The end of combat catches up.
-    if A.Combat() and frame.IsProtected and frame:IsProtected() then C.pendingHide = true; return false end
+    if A.Combat() and hasProtected(frame) then C.pendingHide = true; return false end
     state.visible = visible
     frame:SetAlpha(visible and 1 or 0)
     setMouse(frame, visible, state.memory)

@@ -95,6 +95,28 @@ function A.Listener(handlers, units)
     return listener
 end
 
+-- Temporary enchant on an inventory slot: has it, seconds left. nil means unknown, not missing:
+-- an unreadable answer must not raise a false warning. The global GetWeaponEnchantInfo is only a
+-- deprecation wrapper on this client, so it is the fallback.
+local function readEnchant(info) return info.remainingTimeMs end
+
+function A.WeaponEnchant(slot)
+    local paper = _G.C_PaperDollInfo
+    if paper and type(paper.GetTemporaryEnchantmentInfo) == "function" then
+        local ok, info = pcall(paper.GetTemporaryEnchantmentInfo, slot)
+        if not ok or not A.Public(info) then return nil end
+        if not info then return false, 0 end
+        local read, ms = pcall(readEnchant, info)
+        if not read or not A.Public(ms) then return nil end
+        return true, (tonumber(ms) or 0) / 1000
+    end
+    if type(_G.GetWeaponEnchantInfo) ~= "function" then return nil end
+    local main, mainLeft, _, _, off, offLeft = A.Call(_G.GetWeaponEnchantInfo)
+    if main == nil then return nil end
+    if slot == 16 then return main == true, main == true and (tonumber(mainLeft) or 0) / 1000 or 0 end
+    return off == true, off == true and (tonumber(offLeft) or 0) / 1000 or 0
+end
+
 function A.Shift() return A.Call(IsShiftKeyDown) == true end
 
 function A.GroupUnits()

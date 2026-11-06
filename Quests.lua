@@ -101,7 +101,9 @@ local function headerCheck(header)
     if header.zenialCheck then return header.zenialCheck end
     local check = CreateFrame("CheckButton", nil, header, "UICheckButtonTemplate")
     check:SetSize(18, 18)
-    check:SetPoint("RIGHT", -2, 0)
+    -- Beside the collapse arrow: a click on the arrow must never change the tracker.
+    if header.CollapseButton then check:SetPoint("RIGHT", header.CollapseButton, "LEFT", -2, 0)
+    else check:SetPoint("RIGHT", -28, 0) end
     T.StyleCheckbox(check)
     check:SetScript("OnClick", function(self)
         Q.SetZoneTracked(header.questLogIndex, self:GetChecked() == true)

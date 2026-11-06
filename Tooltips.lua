@@ -89,7 +89,7 @@ function P.AddUnit(tooltip, unit)
     if isPlayer and layout ~= "blizz" then
         -- Compact: one line for level, race and class. One per line: separate lines for race and class.
         local levelWord = _G.LEVEL or tr("Stufe", "Level")
-        local region = findLine(tooltip, function(text) return text:find(levelWord, 1, true) ~= nil end)
+        local region = findLine(tooltip, function(text) return text:sub(1, #levelWord) == levelWord end)
         if region then
             if layout == "compact" then
                 region:SetText(levelLine(info))
@@ -125,8 +125,10 @@ function P.ItemLevel(unit)
     local cached = P.inspect[guid]
     if cached and now - cached.at < INSPECT_KEEP then return cached.level end
     if A.Combat() or (_G.InspectFrame and _G.InspectFrame.IsShown and _G.InspectFrame:IsShown()) then return nil end
-    if P.inspectGuid or A.Call(CanInspect, unit) ~= true then return nil end
-    P.inspectGuid, P.inspectUnit = guid, unit
+    -- An answer that never comes must not block item levels for good.
+    if P.inspectGuid and now - (P.inspectAt or 0) < 5 then return nil end
+    if A.Call(CanInspect, unit) ~= true then return nil end
+    P.inspectGuid, P.inspectUnit, P.inspectAt = guid, unit, now
     P.inspectListener:Set(true)
     A.Call(NotifyInspect, unit)
     return nil

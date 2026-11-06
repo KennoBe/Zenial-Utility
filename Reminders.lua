@@ -202,15 +202,14 @@ end
 -- Other sources
 ----------------------------------------------------------------------
 local function weaponState(slot)
-    local main, mainLeft, _, _, off, offLeft = A.Call(GetWeaponEnchantInfo)
     if slot == "main" then
         if not A.Call(GetInventoryItemID, "player", 16) then return nil end
-        return main == true, main == true and (tonumber(mainLeft) or 0) / 1000 or 0
+        return A.WeaponEnchant(16)
     end
     -- Weapon enchants only exist on a real off-hand weapon, not on a shield or book.
     local paper = _G.C_PaperDollInfo
     if not paper or A.Call(paper.OffhandHasWeapon) ~= true then return nil end
-    return off == true, off == true and (tonumber(offLeft) or 0) / 1000 or 0
+    return A.WeaponEnchant(17)
 end
 
 local function activeTracking()
@@ -395,7 +394,11 @@ local function onClock(_, dt)
         return
     end
     local now = tonumber(A.Call(GetTime)) or 0
-    if R.tickAt and now >= R.tickAt then waited = 0; R.Update() end
+    -- Cleared first: an error during the update must not repeat on every frame.
+    if R.tickAt and now >= R.tickAt then
+        R.tickAt, waited = nil, 0
+        R.Update()
+    end
 end
 
 function R.Schedule()

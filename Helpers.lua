@@ -166,6 +166,15 @@ local function detailAllowed(questID)
     return bandAllowed(A.Call(api.GetQuestDifficultyLevel, questID), A.Call(api.IsQuestTrivial, questID))
 end
 
+-- A confirmed turn-in ends the block for this quest, so a repeatable one can run again at once.
+function H.QuestTurnedIn(questID)
+    if not questID or not H.questSeen then return end
+    local suffix = ":" .. questID
+    for key in pairs(H.questSeen) do
+        if key:sub(-#suffix) == suffix then H.questSeen[key] = nil end
+    end
+end
+
 function H.QuestEvent(event)
     if shiftHeld() then return end
     local questID = A.Call(GetQuestID)
@@ -192,7 +201,7 @@ function H.GossipQuests()
     end
     if comfort("questAccept") then
         for _, quest in ipairs(A.Call(api.GetAvailableQuests) or {}) do
-            local repeatOk = db().questRepeatable or not (quest.repeatable or quest.frequency == 1 or quest.frequency == 2)
+            local repeatOk = db().questRepeatable or not quest.repeatable
             if repeatOk and bandAllowed(quest.questLevel, quest.isTrivial) and once("offer", quest.questID) then
                 A.Call(api.SelectAvailableQuest, quest.questID)
                 return
@@ -204,14 +213,16 @@ end
 function H.GreetingQuests()
     if comfort("questTurnIn") then
         for index = 1, tonumber(A.Call(GetNumActiveQuests)) or 0 do
-            local _, complete = A.Call(GetActiveTitle, index)
-            if complete and once("select", "active" .. index) then A.Call(SelectActiveQuest, index); return end
+            local title, complete = A.Call(GetActiveTitle, index)
+            -- By quest and not by line: the list moves up after each turn-in.
+            local key = A.Call(GetActiveQuestID, index) or title or ("active" .. index)
+            if complete and once("select", key) then A.Call(SelectActiveQuest, index); return end
         end
     end
     if comfort("questAccept") then
         for index = 1, tonumber(A.Call(GetNumAvailableQuests)) or 0 do
-            local trivial, frequency, repeatable, _, questID = A.Call(GetAvailableQuestInfo, index)
-            local repeatOk = db().questRepeatable or not (repeatable == true or frequency == 1 or frequency == 2)
+            local trivial, _, repeatable, _, questID = A.Call(GetAvailableQuestInfo, index)
+            local repeatOk = db().questRepeatable or repeatable ~= true
             if repeatOk and bandAllowed(A.Call(GetAvailableLevel, index), trivial) and once("offer", questID or ("greeting" .. index)) then
                 A.Call(SelectAvailableQuest, index)
                 return
@@ -301,7 +312,9 @@ end
 -- Only warns about a poison that was on the weapon before, so nobody without poisons is nagged.
 function H.CheckPoison()
     if not warning("warnPoison") or A.PlayerClass() ~= "ROGUE" then H.states.poison = nil; return end
-    local main, _, _, _, off = A.Call(GetWeaponEnchantInfo)
+    local main, off = A.WeaponEnchant(16), A.WeaponEnchant(17)
+    -- Unreadable says nothing: the last known state stands.
+    if main == nil and off == nil then return end
     local active = main == true or off == true
     if H.states.poisonActive and not active then alert(tr("Dein Waffengift ist abgelaufen.", "Your weapon poison has worn off.")) end
     H.states.poisonActive = active
@@ -520,6 +533,7 @@ end
 function H.Event(event, ...)
     if event == "MERCHANT_SHOW" then H.MerchantOpened()
     elseif event == "PLAYER_MONEY" then H.MoneyChanged()
+    elseif event == "QUEST_TURNED_IN" then H.QuestTurnedIn(...)
     elseif event == "MERCHANT_CLOSED" then H.MerchantClosed()
     elseif event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" or event == "GOSSIP_SHOW" or event == "QUEST_GREETING" then H.QuestEvent(event)
     elseif event == "UPDATE_INVENTORY_DURABILITY" then H.CheckDurability()

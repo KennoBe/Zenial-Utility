@@ -118,8 +118,15 @@ function B.BuildPlan(stock, ammo)
         wanted[#wanted + 1] = {item = ammo[1].item, target = ammoTarget}
         have[ammo[1].item] = B.AmmoInBags(B.ProjectileClass())
     end
-    local maxCost = (tonumber(data.maxCost) or 0) * 10000
-    return L.PurchasePlan(wanted, stock, have, tonumber(A.Call(GetMoney)) or 0, maxCost)
+    return L.PurchasePlan(wanted, stock, have, B.Budget(), 0)
+end
+
+-- What may still be spent: the gold there is, and what the limit per visit leaves of it.
+function B.Budget()
+    local money = tonumber(A.Call(GetMoney)) or 0
+    local limit = (tonumber(B.Settings().maxCost) or 0) * 10000
+    if limit <= 0 then return money end
+    return math.min(money, math.max(0, limit - (B.visitSpent or 0)))
 end
 
 ----------------------------------------------------------------------
@@ -154,6 +161,7 @@ local function step()
     if (tonumber(A.Call(GetMoney)) or 0) < price then stop(true); return end
     A.Call(BuyMerchantItem, row.index, quantity)
     job.spent = job.spent + price
+    B.visitSpent = (B.visitSpent or 0) + price
     row.quantity = row.quantity - quantity
     if row.quantity <= 0 then table.remove(job.rows, 1) end
 end
@@ -218,14 +226,15 @@ local function createPanel()
 end
 
 -- Stacks that fit into the free slots of a quiver or ammo pouch.
-function B.QuiverSpace(stackSize)
+function B.QuiverSpace(stackSize, projectile)
     local api = _G.C_Container
     if not api then return 0 end
+    -- Bag family: 1 = quiver for arrows, 2 = ammo pouch for bullets.
+    local wanted = projectile == 2 and 1 or projectile == 3 and 2 or nil
     local free = 0
     for bag = 1, 4 do
         local count, family = A.Call(api.GetContainerNumFreeSlots, bag)
-        -- Bag family bits: 1 = quiver, 2 = ammo pouch.
-        if type(family) == "number" and family > 0 and family <= 2 then free = free + (tonumber(count) or 0) end
+        if wanted and family == wanted then free = free + (tonumber(count) or 0) end
     end
     return free * (tonumber(stackSize) or 0)
 end
@@ -235,12 +244,12 @@ function B.FillQuiver()
     if not offer then return false end
     local itemStack = 200
     if _G.C_Item then itemStack = tonumber((select(8, A.Call(_G.C_Item.GetItemInfo, offer.item)))) or itemStack end
-    local space = B.QuiverSpace(itemStack)
+    local space = B.QuiverSpace(itemStack, B.ProjectileClass())
     if space <= 0 then
         A.Print(tr("Köcher oder Munitionsbeutel haben keinen freien Platz.", "Your quiver or ammo pouch has no free space."))
         return false
     end
-    local plan = L.PurchasePlan({{item = offer.item, target = space}}, {[offer.item] = offer}, {}, tonumber(A.Call(GetMoney)) or 0, (tonumber(B.Settings().maxCost) or 0) * 10000)
+    local plan = L.PurchasePlan({{item = offer.item, target = space}}, {[offer.item] = offer}, {}, B.Budget(), 0)
     if #plan == 0 then
         A.Print(tr("Das Gold oder dein Limit reicht dafür nicht.", "Your gold or your limit does not cover this."))
         return false
@@ -308,13 +317,13 @@ function B.Refresh()
 end
 
 function B.MerchantOpened()
-    B.merchantOpen = true
+    B.merchantOpen, B.visitSpent = true, 0
     local data = B.Settings()
     if data.enabled ~= true then return end
     B.Refresh()
     -- Without the confirmation setting the plan runs by itself, but only if automation is on,
     -- and every limit still applied when the plan was made.
-    if data.auto == true and data.confirm == false and B.plan and #B.plan > 0 then B.Execute(B.plan) end
+    if data.auto == true and data.confirm == false and not A.Shift() and B.plan and #B.plan > 0 then B.Execute(B.plan) end
 end
 
 function B.MerchantClosed()

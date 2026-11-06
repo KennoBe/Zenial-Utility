@@ -1,0 +1,31 @@
+## Interface: 16001
+## Title: ZENIAL Utility
+## Notes: Macro browser, hidden graphics settings, map reveal and small everyday helpers for WoW Forever
+## Notes-deDE: Makro-Browser, versteckte Grafikeinstellungen, Karte aufdecken und kleine Alltagshelfer für WoW Forever
+## Author: ZENIAL
+## Version: 0.1.2
+## SavedVariables: ZenialUtilityDB, ZenialMinimapDB
+## IconTexture: Interface\AddOns\ZenialUtility\Media\Icon.tga
+## X-License: MIT
+
+Locale.lua
+Logic.lua
+Adapter.lua
+Theme.lua
+MacroData.lua
+Macros.lua
+GraphicsCatalog.lua
+Graphics.lua
+RevealData.lua
+MapTools.lua
+Helpers.lua
+Widgets.lua
+RollWindow.lua
+ConfigWizard.lua
+SettingsUI.lua
+SettingsMacros.lua
+SettingsGraphics.lua
+Setup.lua
+Core.lua
+Launcher.lua
+LauncherSpec.lua

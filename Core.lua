@@ -30,6 +30,7 @@ App:AddModule(NS.InfoBar)
 App:AddModule(NS.Inventory)
 App:AddModule(NS.Tooltips)
 App:AddModule(NS.Comfort)
+App:AddModule(NS.LootFeed)
 
 function App:GraphicsConfirm()
     NS.GraphicsConfirm.Show()
@@ -123,8 +124,6 @@ end
 
 SLASH_ZENIALUTILITYWAY1 = "/zway"
 SlashCmdList.ZENIALUTILITYWAY = function(text) if App.db then MT.Waypoint(text) end end
-SLASH_ZENIALUTILITYPULL1 = "/zpull"
-SlashCmdList.ZENIALUTILITYPULL = function(text) if App.db then H.Pull(text) end end
 
 _G.ZenialAddonPanels = _G.ZenialAddonPanels or {}
 _G.ZenialAddonPanels.ZenialUtility = {apiVersion = 1, CreatePanel = function(parent)

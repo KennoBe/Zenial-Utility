@@ -1,72 +1,10 @@
 local _, NS = ...
-local V = {labels = {}}
+local V = {}
 NS.Inventory = V
 local A, L, T, tr = NS.Adapter, NS.Logic, NS.Theme, NS.Text
 
 local function db() return NS.App.db end
 local function on(key) return db().modInventory and db()[key] end
-
-----------------------------------------------------------------------
--- Free slots on the bag buttons. The game's own backpack count stays untouched.
-----------------------------------------------------------------------
-local BAG_BUTTONS = {
-    [0] = "MainMenuBarBackpackButton", [1] = "CharacterBag0Slot", [2] = "CharacterBag1Slot",
-    [3] = "CharacterBag2Slot", [4] = "CharacterBag3Slot", [5] = "CharacterReagentBag0Slot",
-}
-
-local function label(bag)
-    local button = _G[BAG_BUTTONS[bag]]
-    if not button then return nil end
-    if not V.labels[bag] then
-        local text = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        text:SetPoint("TOP", 0, -2)
-        text:SetJustifyH("CENTER")
-        V.labels[bag] = text
-    end
-    return V.labels[bag]
-end
-
--- Plain bags count together on the backpack. A special bag (quiver, herbs ...) shows its own number.
-function V.BagReport()
-    local api = _G.C_Container
-    local rows, free, total = {}, 0, 0
-    if not api then return rows, 0, 0 end
-    for bag = 0, 5 do
-        local slots = tonumber(A.Call(api.GetContainerNumSlots, bag)) or 0
-        if slots > 0 then
-            local count, family = A.Call(api.GetContainerNumFreeSlots, bag)
-            count = tonumber(count) or 0
-            local special = (tonumber(family) or 0) ~= 0
-            rows[bag] = {free = count, total = slots, special = special, family = tonumber(family) or 0}
-            if not special then free, total = free + count, total + slots end
-        end
-    end
-    return rows, free, total
-end
-
-function V.UpdateBagLabels()
-    local show = on("bagFreeSlots")
-    local rows, free, total = {}, 0, 0
-    if show then rows, free, total = V.BagReport() end
-    for bag = 0, 5 do
-        local text = (show or V.labels[bag]) and label(bag)
-        if text then
-            local row = rows[bag]
-            local value = ""
-            if show and row then
-                if bag == 0 then value = free .. "/" .. total
-                elseif row.special then
-                    -- A quiver or pouch shows the shots left and turns red with the ammo warning.
-                    local ammoBag = row.family == 1 or row.family == 2
-                    value = ammoBag and NS.Helpers.ammoCount and tostring(NS.Helpers.ammoCount) or (row.free .. "/" .. row.total)
-                    if ammoBag and NS.Helpers.states.ammo then value = "|cffff5940" .. value .. "|r" end
-                end
-            end
-            text:SetText(value)
-            text:SetShown(value ~= "")
-        end
-    end
-end
 
 ----------------------------------------------------------------------
 -- Moving the combined bag window. Shift-drag, kept after the game re-anchors its bags.
@@ -310,9 +248,7 @@ end
 
 ----------------------------------------------------------------------
 local listener = A.Listener({
-    BAG_UPDATE_DELAYED = V.UpdateBagLabels,
-    UNIT_INVENTORY_CHANGED = function() V.UpdateBagLabels() end,
-    PLAYER_ENTERING_WORLD = function() V.UpdateBagLabels(); V.UpdateXP() end,
+    PLAYER_ENTERING_WORLD = function() V.UpdateXP() end,
     PLAYER_XP_UPDATE = V.UpdateXP,
     PLAYER_LEVEL_UP = V.UpdateXP,
     MAIL_SHOW = V.UpdateMailButton,
@@ -320,10 +256,9 @@ local listener = A.Listener({
 
 function V.SettingsChanged()
     local data = db()
-    local any = data.modInventory and (data.bagFreeSlots or data.xpText or data.xpPercent or data.mailAlts)
+    local any = data.modInventory and (data.xpText or data.xpPercent or data.mailAlts)
     listener:Set(any == true)
     if on("bagMove") then hookBags(); applyBagPosition() end
-    V.UpdateBagLabels()
     V.UpdateXP()
     V.UpdateMailButton()
 end

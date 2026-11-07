@@ -11,7 +11,6 @@ L.Defaults = {
     modExtras = true,
     mapReveal = "off", -- off | soft | full
     revealAlpha = .6,
-    mapCoords = true,
     waypoints = true,
     vendorJunk = false,
     vendorRepair = false,
@@ -29,9 +28,6 @@ L.Defaults = {
     screenshotLevel = false,
     screenshotBoss = false,
     tooltipIDs = false,
-    tooltipPrice = true,
-    pullEnabled = true,
-    pullSeconds = 10,
     rollTracker = true,
     -- Everything below came with 0.2.0. Anything that shows new things on screen or acts
     -- for the player starts off, so an update changes nothing until it is switched on.
@@ -56,7 +52,6 @@ L.Defaults = {
     infoColors = true,
     goldScope = "all", -- all | faction | current
     modInventory = true,
-    bagFreeSlots = false,
     bagMove = false,
     xpText = false,
     xpPercent = false,
@@ -79,6 +74,12 @@ L.Defaults = {
     ttGathering = false,
     modQoL = true,
     fastLoot = false,
+    lootConfirmSolo = false,
+    lootFeed = false,
+    lootFeedTime = 3,
+    lootFeedScale = 1,
+    lootFeedQuality = false,
+    lootFeedTooltip = false,
     lootGreed = false,
     skipGossip = false,
     declineDuels = false,
@@ -100,7 +101,8 @@ L.Bounds = {
     revealAlpha = {.2, 1},
     durabilityPercent = {5, 50},
     bagSlots = {1, 20},
-    pullSeconds = {3, 30},
+    lootFeedTime = {2, 5},
+    lootFeedScale = {.6, 1.6},
     ammoThreshold = {10, 5000},
     infoScale = {.6, 1.6},
     infoFont = {8, 20},
@@ -120,7 +122,7 @@ local CHOICES = {
 }
 -- Account data that belongs to no profile and is kept as it is.
 local EXTRA = {"setup", "cvarBackup", "pendingRevert", "imported", "macroInputs", "macroSets", "played", "rollWindow",
-    "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition"}
+    "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "layoutLibrary"}
 L.DataVersion = 2
 
 function L.Copy(value)
@@ -490,20 +492,143 @@ function L.FormatPlayed(seconds)
     return string.format(NS.Text("%d T %d Std %d Min", "%dd %dh %dm"), days, hours, minutes)
 end
 
--- Parses a system roll line through the client's own localized RANDOM_ROLL_RESULT pattern.
-function L.RollPattern(template)
-    if type(template) ~= "string" then return nil end
-    local pattern = template:gsub("([%(%)%.%-%+%*%?%[%]%^%$])", "%%%1")
-    pattern = pattern:gsub("%%%%?%d?%$?s", "(.+)"):gsub("%%%%?%d?%$?d", "(%%d+)")
-    return "^" .. pattern .. "$"
+-- Turns a localized client format such as "%s rolls %d (%d-%d)" into a match pattern.
+-- Positional forms ("%1$s", "%2$d") are read too, so a translation may reorder its arguments:
+-- `order[n]` names the format argument behind capture n.
+local MAGIC = {["^"] = true, ["$"] = true, ["("] = true, [")"] = true, ["%"] = true, ["."] = true,
+    ["["] = true, ["]"] = true, ["*"] = true, ["+"] = true, ["-"] = true, ["?"] = true}
+
+function L.FormatPattern(template)
+    if type(template) ~= "string" or template == "" then return nil end
+    local parts, order, position, argument = {"^"}, {}, 1, 0
+    while position <= #template do
+        local char = template:sub(position, position)
+        if char == "%" then
+            local index, kind, stop = template:match("^(%d+)%$([sd])()", position + 1)
+            if not index then kind, stop = template:match("^([sd])()", position + 1) end
+            if kind then
+                argument = argument + 1
+                order[#order + 1] = tonumber(index) or argument
+                parts[#parts + 1] = kind == "d" and "(%d+)" or "(.-)"
+                position = stop
+            else
+                -- "%%" and anything unknown stay literal characters.
+                parts[#parts + 1] = "%%"
+                position = position + (template:sub(position + 1, position + 1) == "%" and 2 or 1)
+            end
+        else
+            parts[#parts + 1] = MAGIC[char] and ("%" .. char) or char
+            position = position + 1
+        end
+    end
+    parts[#parts + 1] = "$"
+    return {pattern = table.concat(parts), order = order}
 end
 
+-- Values in format argument order, or nil when the text does not fit.
+function L.MatchFormat(text, format)
+    if type(text) ~= "string" or type(format) ~= "table" then return nil end
+    local captures = {text:match(format.pattern)}
+    if #captures == 0 then return nil end
+    local values = {}
+    for index, argument in ipairs(format.order) do values[argument] = captures[index] end
+    return values
+end
+
+-- The roll line comes from the client's own RANDOM_ROLL_RESULT, so every client language works.
+function L.RollPattern(template) return L.FormatPattern(template) end
+
 function L.ParseRoll(message, pattern)
-    if type(message) ~= "string" or not pattern then return nil end
-    local name, roll, low, high = message:match(pattern)
-    roll, low, high = tonumber(roll), tonumber(low), tonumber(high)
-    if not name or not roll or not low or not high then return nil end
+    local values = L.MatchFormat(message, pattern)
+    if not values then return nil end
+    local name, roll, low, high = values[1], tonumber(values[2]), tonumber(values[3]), tonumber(values[4])
+    if type(name) ~= "string" or name == "" or not roll or not low or not high then return nil end
     return {name = name, roll = roll, low = low, high = high}
+end
+
+-- A pause this long between rolls starts a new round.
+L.RollRoundGap = 120
+
+-- Adds a roll to the round. A player's first roll counts; a repeat is only counted, never replaces it.
+-- Returns the stored row and whether it was new. The list stays sorted, earlier rolls first on a tie.
+function L.AddRoll(rolls, row)
+    for _, existing in ipairs(rolls) do
+        if existing.name == row.name then
+            existing.repeats = (existing.repeats or 0) + 1
+            return existing, false
+        end
+    end
+    rolls.sequence = (rolls.sequence or 0) + 1
+    row.sequence = rolls.sequence
+    rolls[#rolls + 1] = row
+    table.sort(rolls, function(a, b)
+        if a.roll ~= b.roll then return a.roll > b.roll end
+        return a.sequence < b.sequence
+    end)
+    return row, true
+end
+
+-- The range of the round's first roll is the valid one. Winners are the highest rolls in that range;
+-- several on a tie. Rolls in another range never win.
+function L.RollWinners(rolls)
+    local first
+    for _, row in ipairs(rolls) do
+        if not first or row.sequence < first.sequence then first = row end
+    end
+    if not first then return {}, nil end
+    local winners, best = {}, nil
+    for _, row in ipairs(rolls) do
+        if row.low == first.low and row.high == first.high then
+            if not best or row.roll > best then best, winners = row.roll, {row}
+            elseif row.roll == best then winners[#winners + 1] = row end
+        end
+    end
+    return winners, first
+end
+
+function L.RollValid(row, first)
+    return first ~= nil and row.low == first.low and row.high == first.high
+end
+
+-- Own loot from a CHAT_MSG_LOOT line, read through the client's LOOT_ITEM_SELF(_MULTIPLE) texts.
+-- The multiple form goes first: the single form would also match "[Item]x3".
+-- Returns the item link and the amount, or nil for anything else (other players, money, crafting).
+function L.ParseOwnLoot(message, multiple, single)
+    local values = L.MatchFormat(message, multiple)
+    local link, count = values and values[1], values and tonumber(values[2])
+    if not (link and count) then
+        values = L.MatchFormat(message, single)
+        link, count = values and values[1], 1
+    end
+    if type(link) ~= "string" or not link:find("|Hitem:", 1, true) then return nil end
+    return link, math.max(1, math.floor(count or 1))
+end
+
+function L.LinkItemID(link)
+    return type(link) == "string" and tonumber(link:match("|Hitem:(%d+)")) or nil
+end
+
+-- Name and colour prefix from an item link: "|cff1eff00" or the newer "|cnIQ2:".
+function L.LinkParts(link)
+    if type(link) ~= "string" then return nil end
+    local name = link:match("|h%[(.-)%]|h") or link:match("%[(.-)%]")
+    local prefix = link:match("^(|c%x%x%x%x%x%x%x%x)") or link:match("^(|cn[^:|]+:)")
+    return name, prefix
+end
+
+-- Quality from the link colour when the item data is not cached yet.
+function L.LinkQuality(link, colors)
+    if type(link) ~= "string" then return nil end
+    local quality = tonumber(link:match("^|cnIQ(%d+):"))
+    if quality then return quality end
+    local hex = link:match("^|c(%x%x%x%x%x%x%x%x)")
+    if hex and type(colors) == "table" then
+        for index, color in pairs(colors) do
+            local value = type(color) == "table" and (color.hex or (color.GenerateHexColor and color:GenerateHexColor()))
+            if type(value) == "string" and value:lower():gsub("^|c", "") == hex:lower() then return tonumber(index) end
+        end
+    end
+    return nil
 end
 
 -- A 1-50 roll next to 1-100 rolls would mislead, so anything but the usual range is named.

@@ -4,10 +4,10 @@ NS.Setup = S
 local W, L, U, tr = NS.ConfigWizard, NS.Logic, NS.SettingsUI, NS.Text
 
 -- Only these keys belong to the wizard; everything else in the settings stays as it is.
-local KEYS = {"mapReveal", "mapCoords", "vendorJunk", "vendorRepair", "questAccept", "questTurnIn",
+local KEYS = {"mapReveal", "vendorJunk", "vendorRepair", "questAccept", "questTurnIn",
     "warnDurability", "warnBags", "warnAmmo", "warnPoison", "warnReagents", "screenshotLevel", "screenshotBoss",
-    "tooltipPrice", "tooltipIDs", "pullEnabled", "rollTracker",
-    "modBuffs", "modInfoBar", "bagFreeSlots", "questRewardValue", "fastLoot"}
+    "tooltipIDs", "rollTracker",
+    "modBuffs", "modInfoBar", "questRewardValue", "fastLoot", "lootFeed"}
 
 local function sanitize(raw, current)
     local combined = L.Copy(current)
@@ -30,36 +30,35 @@ function S.Initialize(fresh)
         pages[#pages + 1] = {title = tr(de, en), description = tr(dde, den), height = height, build = build}
     end
     page("Willkommen bei ZENIAL Utility", "Welcome to ZENIAL Utility",
-        "Viele kleine Helfer in einem Addon. Hier stellst du die wichtigsten ein, alles Weitere findest du unter /zutil.",
-        "Many small helpers in one addon. Set up the most important ones here, everything else is under /zutil.", 150, function(v, p)
-        v:Label(p, tr("Automatik, die Gold ausgibt, Gegenstände verkauft oder NPCs antwortet, bleibt aus, bis du sie einschaltest. Der Makro-Browser braucht keine Einrichtung und wartet in den Einstellungen auf dich.",
-            "Automation that spends gold, sells items or answers NPCs stays off until you turn it on. The macro browser needs no setup and is waiting in the settings."), 0, 0, 552, 70)
-        v:Label(p, tr("„Fertig“ übernimmt deine Auswahl. /zutil config öffnet diesen Assistenten erneut.", "Finish applies your choices. /zutil config reopens this wizard."), 0, -84, 552, 40, "GameFontHighlightSmall", "muted")
+        "Die wichtigsten Helfer einstellen. Alles Weitere unter /zutil.",
+        "Set up the main helpers. Everything else is under /zutil.", 150, function(v, p)
+        v:Label(p, tr("Was Gold ausgibt, verkauft oder NPCs antwortet, bleibt aus, bis du es einschaltest.",
+            "Anything that spends gold, sells or answers NPCs stays off until you turn it on."), 0, 0, 552, 50)
+        v:Label(p, tr("/zutil config öffnet diesen Assistenten erneut.", "/zutil config reopens this wizard."), 0, -60, 552, 40, "GameFontHighlightSmall", "muted")
     end)
     page("Grafik", "Graphics",
-        "Die Vorlage nutzt Einstellungen, die das Spielmenü nicht anbietet: dichtes Gras, weite Sicht und scharfe Schatten.",
-        "The preset uses settings the game menu does not offer: dense grass, long view distance and sharp shadows.", 170, function(v, p)
+        "Dichtes Gras, weite Sicht und scharfe Schatten über Einstellungen, die das Spielmenü nicht anbietet.",
+        "Dense grass, long view distance and sharp shadows through settings the game menu does not offer.", 170, function(v, p)
         v:Dropdown(p, "graphicsChoice", 0, 0, 400, {{"keep", tr("Grafik unverändert lassen", "Leave graphics unchanged")}, {"beauty", tr("Vorlage „Schöne Weitsicht“ verwenden", "Use the “Beautiful views” preset")}})
-        v:Label(p, tr("Das braucht einen kräftigen Rechner. Deine bisherigen Werte werden gesichert. Nach „Fertig“ hast du 30 Sekunden Zeit zu bestätigen, sonst kehrt alles von selbst zurück.",
-            "This needs a capable computer. Your current values are saved. After Finish you have 30 seconds to confirm, otherwise everything returns on its own."), 0, -50, 552, 70, "GameFontHighlightSmall", "muted")
+        v:Label(p, tr("Braucht einen kräftigen Rechner. Deine Werte werden gesichert; ohne Bestätigung binnen 30 Sekunden kehrt alles zurück.",
+            "Needs a capable computer. Your values are saved; without confirmation within 30 seconds everything reverts."), 0, -50, 552, 70, "GameFontHighlightSmall", "muted")
     end)
     page("Karte", "Map",
         "Aufdecken ändert nur die Anzeige. Erkundung, Erfahrung und Erfolge bleiben unberührt.",
-        "Revealing only changes the display. Exploration, experience and achievements stay untouched.", 110, function(v, p)
+        "Revealing only changes the display. Exploration, experience and achievements stay untouched.", 80, function(v, p)
         v:Dropdown(p, "mapReveal", 0, 0, 300, {{"off", tr("Karte nicht aufdecken", "Do not reveal the map")}, {"soft", tr("Halbtransparent aufdecken", "Reveal translucent")}, {"full", tr("Voll aufdecken", "Reveal fully")}})
-        v:Check(p, "mapCoords", tr("Koordinaten auf der Weltkarte anzeigen", "Show coordinates on the world map"), 0, -48)
     end)
     page("Komfort", "Comfort",
-        "Shift hält jede dieser Automatiken beim nächsten Öffnen an.",
-        "Shift holds back each of these automations on the next window.", 150, function(v, p)
+        "Shift hält jede Automatik beim Öffnen an.",
+        "Shift holds back each automation when opening.", 150, function(v, p)
         v:Check(p, "vendorJunk", tr("Graue Gegenstände beim Händler verkaufen", "Sell grey items at vendors"), 0, 0)
         v:Check(p, "vendorRepair", tr("Beim Händler automatisch reparieren", "Repair automatically at vendors"), 0, -36)
         v:Check(p, "questAccept", tr("Quests automatisch annehmen", "Accept quests automatically"), 0, -72)
         v:Check(p, "questTurnIn", tr("Fertige Quests automatisch abgeben", "Turn in finished quests automatically"), 0, -108)
     end)
     page("Warnungen", "Warnings",
-        "Jede Warnung erscheint einmal, wenn es so weit ist.",
-        "Each warning appears once when the time comes.", 190, function(v, p)
+        "Jede Warnung erscheint einmal.",
+        "Each warning appears once.", 190, function(v, p)
         v:Check(p, "warnDurability", tr("Niedrige Haltbarkeit", "Low durability"), 0, 0)
         v:Check(p, "warnBags", tr("Fast volle Taschen", "Nearly full bags"), 0, -36)
         v:Check(p, "warnAmmo", tr("Wenig Munition", "Low ammo"), 0, -72)
@@ -67,26 +66,25 @@ function S.Initialize(fresh)
         v:Check(p, "warnReagents", tr("Reagenzien gehen aus", "Reagents running out"), 0, -144)
     end)
     page("Extras", "Extras",
-        "Kleinigkeiten für zwischendurch. /zpull startet den Pull-Countdown.",
-        "Small things for in between. /zpull starts the pull countdown.", 190, function(v, p)
-        v:Check(p, "tooltipPrice", tr("Verkaufspreis im Tooltip", "Sell price in tooltips"), 0, 0)
-        v:Check(p, "tooltipIDs", tr("Item- und Zauber-IDs im Tooltip", "Item and spell IDs in tooltips"), 0, -36)
-        v:Check(p, "screenshotLevel", tr("Screenshot beim Levelaufstieg", "Screenshot on level up"), 0, -72)
-        v:Check(p, "screenshotBoss", tr("Screenshot beim Bosskill", "Screenshot on boss kill"), 0, -108)
-        v:Check(p, "rollTracker", tr("Würfe von /roll mitschreiben", "Track /roll results"), 0, -144)
+        "Kleinigkeiten für zwischendurch.",
+        "Small things for in between.", 150, function(v, p)
+        v:Check(p, "tooltipIDs", tr("Item- und Zauber-IDs im Tooltip", "Item and spell IDs in tooltips"), 0, 0)
+        v:Check(p, "screenshotLevel", tr("Screenshot beim Levelaufstieg", "Screenshot on level up"), 0, -36)
+        v:Check(p, "screenshotBoss", tr("Screenshot beim Bosskill", "Screenshot on boss kill"), 0, -72)
+        v:Check(p, "rollTracker", tr("Würfelfenster für /roll", "Roll window for /roll"), 0, -108)
     end)
     page("Neue Anzeigen", "New displays",
-        "Diese Helfer zeigen etwas Neues auf dem Bildschirm und bleiben aus, bis du sie wählst.",
-        "These helpers show something new on screen and stay off until you choose them.", 190, function(v, p)
+        "Diese Helfer zeigen etwas Neues an und bleiben aus, bis du sie wählst.",
+        "These helpers show something new and stay off until you choose them.", 190, function(v, p)
         v:Check(p, "modBuffs", tr("Warnleisten für Buffs und Verbrauchsmaterial", "Warning bars for buffs and consumables"), 0, 0)
         v:Check(p, "modInfoBar", tr("Infoleiste mit Gold, Zeit, Ort und mehr", "Info bar with gold, time, location and more"), 0, -36)
-        v:Check(p, "bagFreeSlots", tr("Freie Plätze auf den Taschenbuttons", "Free slots on the bag buttons"), 0, -72)
-        v:Check(p, "questRewardValue", tr("Händlerwert auf Questbelohnungen", "Vendor value on quest rewards"), 0, -108)
-        v:Check(p, "fastLoot", tr("Automatisches Plündern beschleunigen", "Speed up auto loot"), 0, -144)
+        v:Check(p, "questRewardValue", tr("Händlerwert auf Questbelohnungen", "Vendor value on quest rewards"), 0, -72)
+        v:Check(p, "fastLoot", tr("Schnelles Plündern", "Fast looting"), 0, -108)
+        v:Check(p, "lootFeed", tr("Loot-Anzeige für erhaltene Gegenstände", "Loot display for received items"), 0, -144)
     end)
     page("Bereit", "Ready",
-        "Prüfe deine Auswahl. Alles lässt sich jederzeit unter /zutil ändern.",
-        "Check your choices. Everything can be changed at any time under /zutil.", 170, function(v, p)
+        "Deine Auswahl. Alles bleibt unter /zutil änderbar.",
+        "Your choices. Everything stays changeable under /zutil.", 170, function(v, p)
         local summary = v:Label(p, "", 0, 0, 552, 160)
         v:AddUpdate(function()
             local function on(value) return value and tr("An", "On") or tr("Aus", "Off") end

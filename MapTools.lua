@@ -143,31 +143,6 @@ function M.TryAttach()
         M.Draw(pin)
         break
     end
-    M.AttachCoords(map)
-end
-
--- Coordinates line along the lower edge of the world map.
-function M.AttachCoords(map)
-    if M.coords then return end
-    local parent = map.ScrollContainer or map
-    local frame = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    frame:SetSize(280, 22)
-    frame:SetPoint("BOTTOM", parent, "BOTTOM", 0, 4)
-    frame:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 1) + 40)
-    NS.Theme.Panel(frame, "inset")
-    local text = NS.Theme.Text(frame, "", "GameFontHighlightSmall", "text")
-    text:SetPoint("CENTER")
-    text:SetJustifyH("CENTER")
-    frame.text = text
-    local elapsed = 0
-    frame:SetScript("OnUpdate", function(self, dt)
-        elapsed = elapsed + dt
-        if elapsed < .1 then return end
-        elapsed = 0
-        self.text:SetText(M.CoordText(map))
-    end)
-    M.coords = frame
-    M.RefreshCoords()
 end
 
 function M.PlayerPosition(mapID)
@@ -180,28 +155,8 @@ function M.PlayerPosition(mapID)
     return x, y
 end
 
-function M.CoordText(map)
-    local parts = {}
-    local mapID = map.GetMapID and map:GetMapID()
-    local x, y = M.PlayerPosition(mapID)
-    parts[1] = tr("Spieler ", "Player ") .. (x and L.FormatPercent(x, y) or "–")
-    local scroll = map.ScrollContainer
-    if scroll and scroll.GetNormalizedCursorPosition and scroll:IsMouseOver() then
-        local cx, cy = A.Call(scroll.GetNormalizedCursorPosition, scroll)
-        if type(cx) == "number" and type(cy) == "number" and cx >= 0 and cx <= 1 and cy >= 0 and cy <= 1 then
-            parts[2] = tr("Maus ", "Cursor ") .. L.FormatPercent(cx, cy)
-        end
-    end
-    return table.concat(parts, "   ·   ")
-end
-
-function M.RefreshCoords()
-    if M.coords then M.coords:SetShown(db() and db().modMap and db().mapCoords or false) end
-end
-
 function M.Refresh()
     M.TryAttach()
-    M.RefreshCoords()
     if M.pin then M.Draw(M.pin) end
 end
 

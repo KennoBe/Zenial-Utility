@@ -3,7 +3,7 @@ local R = {rows = {}}
 NS.RollWindow = R
 local T, W, L, A, tr = NS.Theme, NS.Widgets, NS.Logic, NS.Adapter, NS.Text
 
-local WIDTH, ROW_HEIGHT, MAX_VISIBLE, CHROME = 250, 18, 10, 86
+local WIDTH, ROW_HEIGHT, MAX_VISIBLE, CHROME = 250, 18, 10, 106
 
 local function place(f)
     local saved = NS.App.db.rollWindow
@@ -52,11 +52,15 @@ local function create()
     title:SetPoint("TOPLEFT", 14, -12)
     f.start = T.Text(f, "", "GameFontHighlightSmall", "muted")
     f.start:SetPoint("LEFT", title, "RIGHT", 8, 0)
+    f.winner = T.Text(f, "", "GameFontHighlightSmall", "gold")
+    f.winner:SetPoint("TOPLEFT", 14, -34)
+    f.winner:SetWidth(WIDTH - 28)
+    f.winner:SetWordWrap(false)
     local close = W.CloseButton(f, function() f:Hide() end)
     close:SetSize(26, 26)
 
     local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", 14, -36)
+    scroll:SetPoint("TOPLEFT", 14, -56)
     scroll:SetPoint("BOTTOMRIGHT", -36, 46)
     f.scroll = scroll
     local content = CreateFrame("Frame", nil, scroll)
@@ -79,16 +83,32 @@ local function create()
     R.frame = f
 end
 
+local function winnerText(winners)
+    if #winners == 0 then return "" end
+    if #winners == 1 then return string.format(tr("Gewinner: %s (%d)", "Winner: %s (%d)"), winners[1].name, winners[1].roll) end
+    local names = {}
+    for _, row in ipairs(winners) do names[#names + 1] = row.name end
+    return string.format(tr("Gleichstand (%d): %s", "Tie (%d): %s"), winners[1].roll, table.concat(names, ", "))
+end
+
 function R.Refresh()
     local f = R.frame
     if not f then return end
     local rolls, started = NS.Helpers.rolls, NS.Helpers.rollStart
+    local winners, first = L.RollWinners(rolls)
+    local won = {}
+    for _, row in ipairs(winners) do won[row] = true end
     f.start:SetText(started and string.format(tr("Start %s", "Started %s"), started) or "")
+    f.winner:SetText(winnerText(winners))
     f.empty:SetShown(#rolls == 0)
     for index, data in ipairs(rolls) do
         local row = f.rows[index] or createRow(f, index)
         row.name:SetText(index .. ". " .. data.name)
         row.value:SetText(data.roll .. L.RollRange(data))
+        -- Gold for the winner, dimmed for a roll in another range: it cannot win.
+        local color = won[data] and "gold" or (L.RollValid(data, first) and "text" or "muted")
+        T.Tint(row.name, "SetTextColor", color)
+        T.Tint(row.value, "SetTextColor", won[data] and "gold" or (color == "muted" and "muted" or "goldText"))
         row:Show()
     end
     for index = #rolls + 1, #f.rows do f.rows[index]:Hide() end

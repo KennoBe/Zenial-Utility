@@ -7,6 +7,7 @@ local ICONS = {
     overview = "Interface\\Icons\\INV_Misc_Book_09",
     macros = "Interface\\Icons\\INV_Misc_Note_01",
     graphics = "Interface\\Icons\\INV_Misc_Spyglass_02",
+    layouts = "Interface\\Icons\\INV_Misc_Map02",
     map = "Interface\\Icons\\INV_Misc_Map_01",
     comfort = "Interface\\Icons\\INV_Misc_Coin_01",
     warnings = "Interface\\Icons\\INV_Misc_PocketWatch_01",
@@ -20,9 +21,9 @@ local ICONS = {
     interface = "Interface\\Icons\\INV_Misc_Gear_01",
     profiles = "Interface\\Icons\\INV_Misc_Note_05",
 }
-U.Order = {"overview", "macros", "graphics", "map", "comfort", "merchant", "warnings", "buffs", "infobar", "tooltip", "inventory", "interface", "extras", "characters", "profiles"}
+U.Order = {"overview", "macros", "graphics", "layouts", "map", "comfort", "merchant", "warnings", "buffs", "infobar", "tooltip", "inventory", "interface", "extras", "characters", "profiles"}
 U.Titles = {
-    overview = tr("Übersicht", "Overview"), macros = tr("Makros", "Macros"), graphics = tr("Grafik", "Graphics"),
+    overview = tr("Übersicht", "Overview"), macros = tr("Makros", "Macros"), graphics = tr("Grafik", "Graphics"), layouts = tr("Layouts", "Layouts"),
     map = tr("Karte", "Map"), comfort = tr("Komfort", "Comfort"), warnings = tr("Warnungen", "Warnings"),
     extras = tr("Extras", "Extras"), characters = tr("Charaktere", "Characters"),
     buffs = tr("Buffs", "Buffs"), infobar = tr("Infoleiste", "Info bar"), merchant = tr("Händler", "Merchant"),
@@ -46,69 +47,68 @@ end
 -- Every topic once: what it does in one sentence, whether it runs, and the way in.
 local CARDS = {
     {page = "macros", title = U.Titles.macros,
-        text = tr("Fertige Makros für alle Klassen ansehen und gezielt in deinen Account oder Charakter übernehmen.",
-            "Browse ready-made macros for every class and copy the ones you want to your account or character."),
+        text = tr("Fertige Makros für alle Klassen, einzeln übernehmen.", "Ready-made macros for every class, copied one by one."),
         status = function()
             return string.format(tr("%d Makros verfügbar", "%d macros available"), #NS.MacroData)
         end},
     {page = "graphics", title = U.Titles.graphics,
-        text = tr("Einstellungen, die das Spielmenü nicht anbietet. Deine alten Werte bleiben gesichert.",
-            "Settings the game menu does not offer. Your previous values stay saved."),
+        text = tr("Einstellungen, die das Spielmenü nicht anbietet. Alte Werte bleiben gesichert.",
+            "Settings the game menu does not offer. Previous values stay saved."),
         status = function()
             local changed = NS.Graphics.ChangedCount(db())
             if changed == 0 then return tr("Keine Änderungen aktiv", "No changes active") end
             return string.format(tr("%d Einstellungen geändert", "%d settings changed"), changed)
         end},
+    {page = "layouts", title = U.Titles.layouts,
+        text = tr("Layouts für Bearbeitungsmodus und Cooldown Manager sammeln, ansehen und teilen.",
+            "Collect, view and share Edit Mode and Cooldown Manager layouts."),
+        status = function()
+            return string.format(tr("%d gespeichert", "%d saved"), #NS.Layouts.Library().entries)
+        end},
     {page = "map", title = U.Titles.map, toggle = "modMap",
-        text = tr("Unerkundete Gebiete zeigen, Koordinaten einblenden und Wegpunkte setzen.",
-            "Show unexplored areas, display coordinates and set waypoints."),
+        text = tr("Unerkundete Gebiete zeigen und Wegpunkte setzen.", "Show unexplored areas and set waypoints."),
         status = function()
             local mode = db().mapReveal
             return (mode == "off" and tr("Aufdecken: aus", "Reveal: off")) or (mode == "soft" and tr("Aufdecken: halbtransparent", "Reveal: translucent")) or tr("Aufdecken: voll", "Reveal: full")
         end},
     {page = "comfort", title = U.Titles.comfort, toggle = "modComfort",
-        text = tr("Beim Händler Müll verkaufen und reparieren, Quests schneller annehmen und abgeben.",
-            "Sell junk and repair at vendors, accept and turn in quests faster."),
+        text = tr("Müll verkaufen, reparieren, Quests annehmen und abgeben.", "Sell junk, repair, accept and turn in quests."),
         status = function() return enabledText({"vendorJunk", "vendorRepair", "questAccept", "questTurnIn"}) end},
     {page = "warnings", title = U.Titles.warnings, toggle = "modWarnings",
-        text = tr("Hinweis bei kaputter Ausrüstung, vollen Taschen, wenig Munition, Reagenzien oder abgelaufenem Gift.",
-            "Alerts for damaged gear, full bags, low ammo or reagents and expired poison."),
+        text = tr("Haltbarkeit, Taschen, Munition, Reagenzien und Gift.", "Durability, bags, ammo, reagents and poison."),
         status = function() return enabledText({"warnDurability", "warnBags", "warnAmmo", "warnPoison", "warnReagents"}) end},
     {page = "extras", title = U.Titles.extras, toggle = "modExtras",
-        text = tr("Automatische Screenshots, Preise und IDs im Tooltip, Pull-Countdown und Würfel-Liste.",
-            "Automatic screenshots, prices and IDs in tooltips, pull countdown and roll list."),
-        status = function() return enabledText({"screenshotLevel", "screenshotBoss", "tooltipIDs", "tooltipPrice", "pullEnabled", "rollTracker"}) end},
+        text = tr("Screenshots, IDs im Tooltip und Würfelfenster.", "Screenshots, IDs in tooltips and the roll window."),
+        status = function() return enabledText({"screenshotLevel", "screenshotBoss", "tooltipIDs", "rollTracker"}) end},
     {page = "buffs", title = U.Titles.buffs, toggle = "modBuffs",
-        text = tr("Warnleisten für fehlende und auslaufende Buffs, Gifte, Waffenverzauberungen und Verbrauchsmaterial.",
-            "Warning bars for missing and expiring buffs, poisons, weapon enchants and consumables."),
+        text = tr("Leisten für fehlende und auslaufende Buffs, Gifte und Verbrauchsmaterial.",
+            "Bars for missing and expiring buffs, poisons and consumables."),
         status = function() return #NS.Reminders.items > 0 and string.format(tr("%d Warnungen aktiv", "%d warnings active"), #NS.Reminders.items) or tr("Nichts offen", "Nothing open") end},
     {page = "infobar", title = U.Titles.infobar, toggle = "modInfoBar",
-        text = tr("Frei platzierbare Leiste mit Gold, Zeit, Ort, Haltbarkeit, Taschen und vielem mehr.",
-            "Movable bar with gold, time, location, durability, bags and much more."),
+        text = tr("Verschiebbare Leiste mit Gold, Zeit, Ort, Haltbarkeit und mehr.", "Movable bar with gold, time, location, durability and more."),
         status = function() return db().modInfoBar and tr("Sichtbar", "Visible") or tr("Aus", "Off") end},
     {page = "merchant", title = U.Titles.merchant,
-        text = tr("Reagenzien, Giftzutaten und Munition nachkaufen, mit Kosten vorab. Eigene Listen pro Charakter.",
-            "Restock reagents, poison ingredients and ammo, with costs shown first. Own lists per character."),
+        text = tr("Reagenzien, Giftzutaten und Munition nachkaufen. Listen pro Charakter.",
+            "Restock reagents, poison ingredients and ammo. Lists per character."),
         status = function() return NS.AutoBuy.Settings().enabled and tr("Einkaufsliste an", "Shopping list on") or tr("Aus", "Off") end},
     {page = "tooltip", title = U.Titles.tooltip, toggle = "modTooltip",
-        text = tr("Charakter-Tooltips anpassen, Position, Lebensbalken und nötige Sammelfertigkeit.",
-            "Adjust character tooltips, position, health bar and gathering skill needed."),
+        text = tr("Charakter-Tooltips, Position, Lebensbalken und Sammelfertigkeit.",
+            "Character tooltips, position, health bar and gathering skill."),
         status = function() return enabledText({"ttUnit", "ttGathering", "ttItemLevel"}) end},
     {page = "inventory", title = U.Titles.inventory, toggle = "modInventory",
-        text = tr("Freie Plätze auf Taschen, XP-Zahlen, Twinks als Postempfänger und Grauen gezielt zerstören.",
-            "Free slots on bags, XP numbers, alts as mail recipients and destroying grey items on purpose."),
-        status = function() return enabledText({"bagFreeSlots", "bagMove", "xpText", "mailAlts", "destroyGray"}) end},
+        text = tr("Taschenfenster verschieben, XP-Zahlen, Twinks als Empfänger, Graues zerstören.",
+            "Move the bag window, XP numbers, alts as recipients, destroy grey items."),
+        status = function() return enabledText({"bagMove", "xpText", "mailAlts", "destroyGray"}) end},
     {page = "interface", title = U.Titles.interface, toggle = "modQoL",
-        text = tr("Schnelleres Plündern, Dialoge überspringen, Fehlerfilter und Oberflächenelemente ausblenden.",
-            "Faster looting, skipping dialogs, error filter and hiding interface elements."),
-        status = function() return enabledText({"fastLoot", "lootGreed", "skipGossip", "declineDuels", "bgRelease", "errorFilter"}) end},
+        text = tr("Quicker Loot, Dialoge, Fehlerfilter und Elemente ausblenden.",
+            "Quicker Loot, dialogs, error filter and hiding elements."),
+        status = function() return enabledText({"fastLoot", "lootFeed", "lootGreed", "skipGossip", "declineDuels", "bgRelease", "errorFilter"}) end},
     {page = "profiles", title = U.Titles.profiles,
-        text = tr("Benannte Einstellungen für alle Charaktere, als Text teilbar.",
-            "Named settings for all characters, shareable as text."),
+        text = tr("Benannte Einstellungen, als Text teilbar.", "Named settings, shareable as text."),
         status = function() return tr("Aktiv: ", "Active: ") .. NS.Profiles.Active() end},
     {page = "characters", title = U.Titles.characters,
-        text = tr("Spielzeit aller Charaktere sehen und Charakter-Makros auf einen Twink übertragen.",
-            "See the playtime of all characters and carry character macros over to an alt."),
+        text = tr("Spielzeit aller Charaktere und Charakter-Makros für Twinks.",
+            "Playtime of all characters and character macros for alts."),
         status = function()
             local rows = NS.Helpers.PlayedRows()
             return string.format(tr("%d Charaktere erfasst", "%d characters recorded"), #rows)
@@ -146,8 +146,8 @@ function U.builders.overview(v, p)
             check:SetSize(22, 22)
             check:SetPoint("TOPRIGHT", -8, -8)
             T.StyleCheckbox(check)
-            W.Tooltip(check, card.title, tr("Schaltet das ganze Thema an oder aus. Einzelne Einstellungen bleiben erhalten.",
-                "Turns the whole topic on or off. Individual settings are kept."))
+            W.Tooltip(check, card.title, tr("Ganzes Thema an oder aus. Einzelne Einstellungen bleiben erhalten.",
+                "Whole topic on or off. Individual settings are kept."))
             check:SetScript("OnClick", function(self)
                 v.draft[card.toggle] = self:GetChecked() == true
                 v:Changed()
@@ -188,25 +188,24 @@ end
 
 function U.builders.map(v, p)
     section(v, p, tr("Karte aufdecken", "Reveal map"), 0)
-    v:Label(p, tr("Zeigt Gebiete, in denen du noch nicht warst. Das ändert nur die Anzeige: Erkundung, Erfahrung und Erfolge bleiben unberührt.",
-        "Shows areas you have not visited yet. This only changes the display: exploration, experience and achievements stay untouched."), 0, -28, 552, 36, "GameFontHighlightSmall", "muted")
-    v:Dropdown(p, "mapReveal", 0, -68, 300, {{"off", tr("Aus", "Off")}, {"soft", tr("Halbtransparent", "Translucent")}, {"full", tr("Voll aufgedeckt", "Fully revealed")}})
-    v:Number(p, "revealAlpha", tr("Deckkraft bei halbtransparent", "Opacity when translucent"), -106, .2, 1, .05)
-    section(v, p, tr("Koordinaten und Wegpunkte", "Coordinates and waypoints"), -188)
-    local y = checks(v, p, -216, {
-        {"mapCoords", tr("Koordinaten auf der Weltkarte anzeigen", "Show coordinates on the world map")},
-        {"waypoints", tr("Wegpunkte per Befehl setzen", "Set waypoints by command"),
-            tr("/zway 45.2 67.8 setzt einen Wegpunkt in deiner Zone. /zway clear entfernt ihn.", "/zway 45.2 67.8 sets a waypoint in your zone. /zway clear removes it.")},
+    v:Label(p, tr("Nur die Anzeige ändert sich. Erkundung, Erfahrung und Erfolge bleiben unberührt.",
+        "Only the display changes. Exploration, experience and achievements stay untouched."), 0, -28, 552, 20, "GameFontHighlightSmall", "muted")
+    v:Dropdown(p, "mapReveal", 0, -52, 300, {{"off", tr("Aus", "Off")}, {"soft", tr("Halbtransparent", "Translucent")}, {"full", tr("Voll aufgedeckt", "Fully revealed")}})
+    v:Number(p, "revealAlpha", tr("Deckkraft bei halbtransparent", "Opacity when translucent"), -90, .2, 1, .05)
+    section(v, p, tr("Wegpunkte", "Waypoints"), -172)
+    local y = checks(v, p, -200, {
+        {"waypoints", tr("Wegpunkte per Befehl", "Waypoints by command"),
+            tr("/zway 45.2 67.8 setzt einen Wegpunkt in deiner Zone, /zway clear entfernt ihn.", "/zway 45.2 67.8 sets a waypoint in your zone, /zway clear removes it.")},
     })
-    v:Label(p, tr("Auch im Tracking-Menü der Weltkarte lässt sich das Aufdecken umschalten, neben den Einträgen von ZENIAL Community.",
-        "Revealing can also be toggled in the world map's tracking menu, next to the ZENIAL Community entries."), 0, y - 8, 552, 36, "GameFontHighlightSmall", "muted")
+    v:Label(p, tr("Koordinaten zeigt die Weltkarte selbst an. Das Aufdecken lässt sich auch im Filtermenü der Weltkarte umschalten.",
+        "The world map shows coordinates itself. Revealing can also be toggled in the world map's filter menu."), 0, y - 8, 552, 36, "GameFontHighlightSmall", "muted")
     return -y + 60
 end
 
 function U.builders.comfort(v, p)
     section(v, p, tr("Beim Händler", "At vendors"), 0)
     local y = checks(v, p, -28, {
-        {"vendorJunk", tr("Graue Gegenstände automatisch verkaufen", "Sell grey items automatically"), tr("Shift beim Öffnen des Händlers überspringt alles einmalig.", "Holding Shift when opening the vendor skips everything once.")},
+        {"vendorJunk", tr("Graue Gegenstände automatisch verkaufen", "Sell grey items automatically"), tr("Shift beim Öffnen überspringt alles einmal.", "Shift while opening skips everything once.")},
         {"vendorRepair", tr("Automatisch reparieren", "Repair automatically")},
         {"vendorGuildRepair", tr("Zuerst aus der Gildenbank reparieren", "Repair from the guild bank first")},
         {"vendorChat", tr("Betrag im Chat anzeigen", "Show the amount in chat")},
@@ -214,10 +213,10 @@ function U.builders.comfort(v, p)
     section(v, p, tr("Quests", "Quests"), y - 10)
     y = checks(v, p, y - 38, {
         {"questAccept", tr("Quests automatisch annehmen", "Accept quests automatically")},
-        {"questTurnIn", tr("Fertige Quests automatisch abgeben", "Turn in finished quests automatically"), tr("Bei mehreren Belohnungen wählst du selbst. Quests, die Gold kosten, bleiben stehen. Shift pausiert.", "With several rewards you choose yourself. Quests that cost gold are left alone. Shift pauses.")},
+        {"questTurnIn", tr("Fertige Quests automatisch abgeben", "Turn in finished quests automatically"), tr("Nicht bei Belohnungswahl oder Goldkosten. Shift pausiert.", "Not with a reward choice or gold cost. Shift pauses.")},
         {"questRepeatable", tr("Wiederholbare Quests mit annehmen", "Also accept repeatable quests")},
-        {"questRewardValue", tr("Händlerwert auf den Belohnungen anzeigen", "Show vendor value on rewards"), tr("Nur eine Anzeige: Ausgewählt wird nie etwas für dich.", "Only a display: nothing is ever chosen for you.")},
-        {"questZoneTrack", tr("Gebiet-Häkchen im Questlog", "Zone checkbox in the quest log"), tr("Verfolgt alle Quests eines Gebiets, auch eingeklappt, bis zum Limit der Questverfolgung.", "Tracks all quests of a zone, also collapsed, up to the tracker's limit.")},
+        {"questRewardValue", tr("Händlerwert auf den Belohnungen anzeigen", "Show vendor value on rewards")},
+        {"questZoneTrack", tr("Gebiet-Häkchen im Questlog", "Zone checkbox in the quest log"), tr("Verfolgt alle Quests eines Gebiets bis zum Limit der Questverfolgung.", "Tracks all quests of a zone up to the tracker's limit.")},
     })
     v:Label(p, tr("Annehmen bis", "Accept up to"), 0, y - 5, 200, 24)
     v:Dropdown(p, "questDifficulty", 210, y, 300, {{"all", tr("Alle Schwierigkeiten", "All difficulties")}, {"nogray", tr("Ohne graue Quests", "Without grey quests")}, {"nogreen", tr("Ohne graue und grüne Quests", "Without grey and green quests")}})
@@ -226,10 +225,10 @@ function U.builders.comfort(v, p)
 end
 
 function U.builders.warnings(v, p)
-    section(v, p, tr("Wann soll Utility warnen?", "When should Utility warn?"), 0)
-    v:Label(p, tr("Jede Warnung erscheint einmal, wenn der Grenzwert erreicht wird, und erst nach einer Erholung wieder.",
-        "Each warning appears once when its limit is reached, and again only after recovering."), 0, -28, 552, 36, "GameFontHighlightSmall", "muted")
-    local y = checks(v, p, -66, {{"warnDurability", tr("Niedrige Haltbarkeit", "Low durability")}})
+    section(v, p, tr("Warnungen", "Warnings"), 0)
+    v:Label(p, tr("Einmal beim Erreichen des Grenzwerts, wieder erst nach einer Erholung.",
+        "Once when the limit is reached, again only after recovering."), 0, -28, 552, 20, "GameFontHighlightSmall", "muted")
+    local y = checks(v, p, -52, {{"warnDurability", tr("Niedrige Haltbarkeit", "Low durability")}})
     v:Number(p, "durabilityPercent", tr("Warnen ab (%)", "Warn at (%)"), y, 5, 50, 5)
     y = checks(v, p, y - 70, {{"warnBags", tr("Fast volle Taschen", "Nearly full bags")}})
     v:Number(p, "bagSlots", tr("Warnen ab freien Plätzen", "Warn at free slots"), y, 1, 20, 1)
@@ -250,19 +249,15 @@ function U.builders.extras(v, p)
         {"screenshotBoss", tr("Screenshot beim Bosskill", "Screenshot on boss kill")},
     })
     section(v, p, tr("Tooltips", "Tooltips"), y - 10)
-    y = checks(v, p, y - 38, {
-        {"tooltipPrice", tr("Verkaufspreis und Stapelwert anzeigen", "Show sell price and stack value")},
-        {"tooltipIDs", tr("Item- und Zauber-IDs anzeigen", "Show item and spell IDs")},
-    })
-    section(v, p, tr("Pull-Countdown", "Pull countdown"), y - 10)
-    y = checks(v, p, y - 38, {{"pullEnabled", tr("Befehl /zpull aktivieren", "Enable the /zpull command"), tr("/zpull 10 startet, /zpull stop bricht ab. Nutzt den Countdown des Spiels, sonst den Gruppenchat.", "/zpull 10 starts, /zpull stop cancels. Uses the game's countdown, otherwise group chat.")}})
-    v:Number(p, "pullSeconds", tr("Standarddauer (s)", "Default length (s)"), y, 3, 30, 1)
-    y = y - 70
-    section(v, p, tr("Würfel-Liste", "Roll list"), y)
-    y = checks(v, p, y - 28, {{"rollTracker", tr("Würfe von /roll mitschreiben", "Track /roll results")}})
+    y = checks(v, p, y - 38, {{"tooltipIDs", tr("Item- und Zauber-IDs anzeigen", "Show item and spell IDs")}})
+    section(v, p, tr("Würfeln", "Rolls"), y - 10)
+    y = checks(v, p, y - 38, {{"rollTracker", tr("Würfelfenster für /roll", "Roll window for /roll"),
+        tr("Eigene Würfe und die der Gruppe. Bedarf und Gier zählen nicht. Nach 2 Minuten Pause beginnt eine neue Runde.",
+            "Your own rolls and your group's. Need and Greed do not count. A new round starts after a 2 minute pause.")}})
     v.rollLabel = v:Label(p, "", 0, y, 552, 104, "GameFontHighlightSmall")
-    v:Button(p, tr("Liste leeren", "Clear list"), 0, y - 110, 150, function() NS.Helpers.ClearRolls() end, "secondary")
-    v:Button(p, tr("Höchsten Wurf ansagen", "Announce highest roll"), 160, y - 110, 210, function()
+    v:Button(p, tr("Fenster zeigen", "Show window"), 0, y - 110, 150, function() NS.RollWindow.Update(true) end, "secondary")
+    v:Button(p, tr("Liste leeren", "Clear list"), 160, y - 110, 150, function() NS.Helpers.ClearRolls() end, "secondary")
+    v:Button(p, tr("Gewinner ansagen", "Announce winner"), 320, y - 110, 190, function()
         if not NS.Helpers.AnnounceWinner() then v:SetMessage(tr("Dafür braucht es einen Wurf und eine Gruppe.", "This needs a roll and a group.")) end
     end, "secondary")
     return -y + 160
@@ -272,11 +267,10 @@ function U.builders.characters(v, p)
     section(v, p, tr("Spielzeit", "Playtime"), 0)
     v.playedLabel = v:Label(p, "", 0, -28, 552, 150, "GameFontHighlightSmall")
     v:Button(p, tr("Spielzeit aktualisieren", "Update playtime"), 0, -184, 220, function() A.Call(RequestTimePlayed) end, "secondary")
-    v:Label(p, tr("Erfasst wird, wenn du hier klickst oder /played nutzt. Das Spiel schreibt den Wert zusätzlich in den Chat.",
-        "Recorded when you click here or use /played. The game also prints the value to chat."), 232, -184, 320, 36, "GameFontHighlightSmall", "muted")
+    v:Label(p, tr("Auch /played wird erfasst.", "/played is recorded too."), 232, -190, 320, 20, "GameFontHighlightSmall", "muted")
     section(v, p, tr("Charakter-Makros übertragen", "Carry over character macros"), -232)
-    v:Label(p, tr("Sichert die Makros dieses Charakters im Addon. Auf einem anderen Charakter übernimmst du sie dann hier. Vorhandene Namen bleiben unberührt.",
-        "Saves this character's macros in the addon. You then import them here on another character. Existing names stay untouched."), 0, -260, 552, 36, "GameFontHighlightSmall", "muted")
+    v:Label(p, tr("Hier sichern, dann auf dem anderen Charakter übernehmen. Vorhandene Namen bleiben unberührt.",
+        "Save here, then import on the other character. Existing names stay untouched."), 0, -260, 552, 36, "GameFontHighlightSmall", "muted")
     v:Button(p, tr("Makros dieses Charakters sichern", "Save this character's macros"), 0, -300, 290, function()
         local ok, count = NS.Macros.SaveCharacterSet(db())
         v:SetMessage(ok and string.format(tr("%d Makros gesichert.", "%d macros saved."), count) or tr("Im Kampf nicht möglich.", "Not possible in combat."))
@@ -305,9 +299,12 @@ end
 function U.RefreshPageData(v)
     if v.index == "extras" and v.rollLabel then
         local lines = {}
+        local won = {}
+        for _, row in ipairs(L.RollWinners(NS.Helpers.rolls)) do won[row] = true end
         for index, row in ipairs(NS.Helpers.rolls) do
             if index > 6 then break end
-            lines[#lines + 1] = string.format("%d.  %s  ·  %d  (%d–%d)", index, row.name, row.roll, row.low, row.high)
+            local line = string.format("%d.  %s  ·  %d  (%d–%d)", index, row.name, row.roll, row.low, row.high)
+            lines[#lines + 1] = won[row] and ("|cffffd100" .. line .. "|r") or line
         end
         v.rollLabel:SetText(#lines > 0 and table.concat(lines, "\n") or tr("Noch keine Würfe.", "No rolls yet."))
     elseif v.index == "characters" and v.playedLabel then
@@ -377,12 +374,12 @@ function U.Create(parent, embedded)
     v.nav = {}
     for index, key in ipairs(U.Order) do
         local id = key
-        local button = T.Button(f, U.Titles[key], embedded and 98 or 140, 30, function() v:SelectPage(id) end, "secondary")
+        local button = T.Button(f, U.Titles[key], embedded and 88 or 140, 30, function() v:SelectPage(id) end, "secondary")
         if embedded then
-            -- Two rows of eight fit the Community canvas.
-            button:SetPoint("TOPLEFT", 12 + (index - 1) % 8 * 102, -8 - math.floor((index - 1) / 8) * 34)
+            -- Two rows of nine fit the 856-pixel Community canvas; the last slot holds the search.
+            button:SetPoint("TOPLEFT", 12 + (index - 1) % 9 * 92, -8 - math.floor((index - 1) / 9) * 34)
         else
-            button:SetPoint("TOPLEFT", 18, -80 - (index - 1) * 36)
+            button:SetPoint("TOPLEFT", 18, -80 - (index - 1) * 34)
             T.StyleNav(button, ICONS[key])
         end
         v.nav[key] = button
@@ -398,18 +395,18 @@ function U.Create(parent, embedded)
     scroll:SetScrollChild(content)
     v.content = content
     W.ScrollBar(scroll, 40)
-    -- Macros and graphics bring their own lists, so they use the area without the outer scroll.
+    -- Macros, graphics and layouts bring their own lists, so they use the area without the outer scroll.
     local fixed = CreateFrame("Frame", nil, f)
     fixed:SetPoint("TOPLEFT", left, top)
     fixed:SetPoint("BOTTOMRIGHT", embedded and -16 or -20, bottom)
     fixed:Hide()
     v.fixedHost = fixed
     -- Search box: on the free spot of the second tab row, or in the title bar of the own window.
-    local search = W.Edit(f, 0, 0, embedded and 98 or 220, function(text) U.ShowSearch(v, text) end)
+    local search = W.Edit(f, 0, 0, embedded and 88 or 220, function(text) U.ShowSearch(v, text) end)
     search:ClearAllPoints()
-    if embedded then search:SetPoint("TOPLEFT", 12 + 7 * 102, -42)
+    if embedded then search:SetPoint("TOPLEFT", 12 + 8 * 92, -42)
     else search:SetPoint("TOPRIGHT", -60, -26) end
-    W.Tooltip(search, tr("Einstellungen suchen", "Search settings"), tr("Tippe ein Stichwort, zum Beispiel „Gift“ oder „Reparieren“.", "Type a word, for example “poison” or “repair”."))
+    W.Tooltip(search, tr("Einstellungen suchen", "Search settings"))
     v.search = search
     v.searchHint = T.Text(search, tr("Suchen …", "Search …"), "GameFontHighlightSmall", "muted")
     v.searchHint:SetPoint("LEFT", 8, 0)

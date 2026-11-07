@@ -387,20 +387,10 @@ end
 ----------------------------------------------------------------------
 -- Tooltips
 ----------------------------------------------------------------------
-local function addItemLines(tooltip, item, link)
+-- The game shows the sell price itself; Utility only adds the IDs.
+local function addItemLines(tooltip, item)
     if not tooltip or not tooltip.AddLine then return end
     if extra("tooltipIDs") and item then tooltip:AddLine(tr("Item-ID: ", "Item ID: ") .. item, .65, .61, .52) end
-    if not extra("tooltipPrice") or (_G.MerchantFrame and _G.MerchantFrame:IsShown()) then return end
-    local api = _G.C_Item
-    if not api then return end
-    local stack, price = select(8, A.Call(api.GetItemInfo, link or item)), select(11, A.Call(api.GetItemInfo, link or item))
-    price, stack = tonumber(price) or 0, tonumber(stack) or 1
-    if price <= 0 then return end
-    tooltip:AddLine(tr("Verkaufspreis: ", "Sell price: ") .. A.Money(price), .82, .79, .71)
-    local owner = tooltip.GetOwner and A.Call(tooltip.GetOwner, tooltip)
-    local held = type(owner) == "table" and tonumber(owner.count) or nil
-    if held and held > 1 then stack = held end
-    if stack > 1 then tooltip:AddLine(string.format(tr("Stapel (%d): ", "Stack (%d): "), stack) .. A.Money(price * stack), .82, .79, .71) end
 end
 
 function H.AttachTooltips()
@@ -411,7 +401,7 @@ function H.AttachTooltips()
         H.tooltipsAttached = true
         processor.AddTooltipPostCall(kinds.Item, function(tooltip, data)
             if not A.Public(data) or type(data) ~= "table" or not A.Public(data.id) then return end
-            pcall(addItemLines, tooltip, data.id, data.hyperlink)
+            pcall(addItemLines, tooltip, data.id)
         end)
         if kinds.Spell then
             processor.AddTooltipPostCall(kinds.Spell, function(tooltip, data)
@@ -424,77 +414,73 @@ function H.AttachTooltips()
         pcall(_G.GameTooltip.HookScript, _G.GameTooltip, "OnTooltipSetItem", function(tooltip)
             local _, link = A.Call(tooltip.GetItem, tooltip)
             local item = type(link) == "string" and tonumber(link:match("item:(%d+)"))
-            pcall(addItemLines, tooltip, item, link)
+            pcall(addItemLines, tooltip, item)
         end)
     end
 end
 
-----------------------------------------------------------------------
--- Pull countdown: the game's own group countdown, otherwise group chat lines.
 ----------------------------------------------------------------------
 local function groupChannel()
     if A.Call(IsInRaid) == true then return "RAID" end
     if A.Call(IsInGroup) == true then return "PARTY" end
 end
 
-function H.Pull(argument)
-    if not db().modExtras or not db().pullEnabled then return end
-    argument = (argument or ""):match("^%s*(.-)%s*$"):lower()
-    if argument == "stop" or argument == "cancel" then
-        if H.pull and H.pull.channel then A.Call(SendChatMessage, tr("Pull abgebrochen.", "Pull cancelled."), H.pull.channel) end
-        H.pull = nil
-        return
-    end
-    local bounds = L.Bounds.pullSeconds
-    local seconds = math.floor(math.max(bounds[1], math.min(bounds[2], tonumber(argument) or db().pullSeconds)))
-    local channel = groupChannel()
-    if not channel then A.Print(tr("Der Countdown braucht eine Gruppe.", "The countdown needs a group.")); return end
-    local party = _G.C_PartyInfo
-    if party and party.DoCountdown and A.Call(party.DoCountdown, seconds) == true then return end
-    H.pull = {left = seconds, timer = 0, channel = channel}
-    NS.App:WakeTick()
-    A.Call(SendChatMessage, string.format(tr("Pull in %d Sekunden.", "Pull in %d seconds."), seconds), channel)
-end
-
-function H.PullStep(dt)
-    local pull = H.pull
-    if not pull then return end
-    pull.timer = pull.timer + dt
-    if pull.timer < 1 then return end
-    pull.timer = pull.timer - 1
-    pull.left = pull.left - 1
-    if pull.left <= 0 then
-        A.Call(SendChatMessage, tr("Pull!", "Pull!"), pull.channel)
-        H.pull = nil
-    elseif pull.left <= 3 then
-        A.Call(SendChatMessage, tostring(pull.left), pull.channel)
-    end
-end
-
 ----------------------------------------------------------------------
 -- Roll tracker: reads /roll system lines through the client's own localized text.
 ----------------------------------------------------------------------
+-- Need and Greed results arrive as loot messages and never pass through here.
+local function baseName(name) return type(name) == "string" and (name:gsub("%-.*$", "")) or nil end
+
+function H.IsOwnName(name)
+    local own = A.Call(UnitName, "player")
+    return type(own) == "string" and (name == own or baseName(name) == own)
+end
+
+-- Nearby players outside the group also produce roll lines; they are not part of the round.
+function H.IsGroupMember(name)
+    if A.Call(IsInGroup) ~= true then return false end
+    for _, unit in ipairs(A.GroupUnits()) do
+        local unitName, realm = A.Call(UnitName, unit)
+        if type(unitName) == "string" then
+            if name == unitName then return true end
+            if type(realm) == "string" and realm ~= "" and name == unitName .. "-" .. realm then return true end
+        end
+    end
+    return false
+end
+
 function H.SystemMessage(message)
-    if not extra("rollTracker") or not A.Public(message) then return end
+    -- During an encounter lockdown the line is a protected value and cannot be read.
+    if not extra("rollTracker") or type(message) ~= "string" or not A.Public(message) then return end
     H.rollPattern = H.rollPattern or L.RollPattern(_G.RANDOM_ROLL_RESULT)
     local row = L.ParseRoll(message, H.rollPattern)
     if not row then return end
-    for _, existing in ipairs(H.rolls) do
-        if existing.name == row.name then return end -- the first roll of a player counts
+    local own = H.IsOwnName(row.name)
+    if not own and not H.IsGroupMember(row.name) then return end
+    local now = tonumber(A.Call(GetTime)) or 0
+    local fresh = #H.rolls == 0 or (H.rollLast and now - H.rollLast > L.RollRoundGap)
+    if fresh then
+        H.rolls = {}
+        H.rollStart = A.Call(date, "%H:%M:%S")
     end
-    if #H.rolls == 0 then H.rollStart = A.Call(date, "%H:%M:%S") end
-    H.rolls[#H.rolls + 1] = row
-    table.sort(H.rolls, function(a, b) return a.roll > b.roll end)
+    H.rollLast = now
+    row.own = own
+    -- An own line may carry the realm; the round knows the player once.
+    if own then row.name = A.Call(UnitName, "player") or row.name end
+    L.AddRoll(H.rolls, row)
     if NS.SettingsUI then NS.SettingsUI.RefreshData() end
-    if NS.RollWindow then NS.RollWindow.Update(groupChannel() ~= nil) end
+    -- Opens on an own roll and on the first roll of a round; later rolls update an open window.
+    if NS.RollWindow then NS.RollWindow.Update(own or fresh) end
 end
 
 function H.ClearRolls()
     H.rolls = {}
-    H.rollStart = nil
+    H.rollStart, H.rollLast = nil, nil
     if NS.SettingsUI then NS.SettingsUI.RefreshData() end
     if NS.RollWindow then NS.RollWindow.Update(false) end
 end
+
+function H.RollWinners() return L.RollWinners(H.rolls) end
 
 -- All rolls, highest first, with the time of the round's first roll.
 function H.AnnounceRolls()
@@ -508,15 +494,20 @@ function H.AnnounceRolls()
 end
 
 function H.AnnounceWinner()
-    local top, channel = H.rolls[1], groupChannel()
-    if not top or not channel then return false end
-    A.Call(SendChatMessage, string.format(tr("Höchster Wurf: %s mit %d", "Highest roll: %s with %d"), top.name, top.roll), channel)
+    local winners, channel = L.RollWinners(H.rolls), groupChannel()
+    if #winners == 0 or not channel then return false end
+    local names = {}
+    for _, row in ipairs(winners) do names[#names + 1] = row.name end
+    local text = #winners > 1
+        and string.format(tr("Gleichstand mit %d: %s", "Tie at %d: %s"), winners[1].roll, table.concat(names, ", "))
+        or string.format(tr("Höchster Wurf: %s mit %d", "Highest roll: %s with %d"), names[1], winners[1].roll)
+    A.Call(SendChatMessage, text, channel)
     return true
 end
 
 ----------------------------------------------------------------------
 function H.Tick(dt)
-    H.SellStep(dt); H.ShotStep(dt); H.PullStep(dt)
+    H.SellStep(dt); H.ShotStep(dt)
     if H.PollsPoison() then
         H.slow = (H.slow or 0) + dt
         if H.slow >= 5 then H.slow = 0; H.CheckPoison() end
@@ -527,7 +518,7 @@ end
 function H.PollsPoison() return warning("warnPoison") and A.PlayerClass() == "ROGUE" end
 
 function H.Busy()
-    return H.sellQueue ~= nil or H.shotTimer ~= nil or H.pull ~= nil or H.PollsPoison()
+    return H.sellQueue ~= nil or H.shotTimer ~= nil or H.PollsPoison()
 end
 
 function H.Event(event, ...)

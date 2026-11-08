@@ -91,6 +91,9 @@ driver:SetScript("OnEvent", function(_, event, ...)
         NS.SettingsUI.Refresh()
     elseif event == "CVAR_UPDATE" or event == "UPDATE_MACROS" then
         NS.SettingsUI.Refresh()
+    elseif event == "PLAYER_LEVEL_UP" then
+        MT.LevelChanged(first)
+        H.Event(event, ...)
     else
         H.Event(event, ...)
     end

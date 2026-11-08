@@ -17,6 +17,7 @@ Macros.lua
 GraphicsCatalog.lua
 Graphics.lua
 RevealData.lua
+LevelData.lua
 MapTools.lua
 Helpers.lua
 Characters.lua

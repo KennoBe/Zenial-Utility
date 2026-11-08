@@ -12,6 +12,9 @@ L.Defaults = {
     mapReveal = "off", -- off | soft | full
     revealAlpha = .6,
     waypoints = true,
+    mapLevels = false, -- zone level ranges on continent maps
+    mapLevelMode = "labels", -- labels (map labels and tooltip) | tooltip (tooltip only)
+    mapLevelDungeons = true, -- the zone's dungeons in that tooltip
     vendorJunk = false,
     vendorRepair = false,
     vendorGuildRepair = false,
@@ -117,6 +120,7 @@ L.Bounds = {
 local VISIBILITY = {show = true, hide = true, hover = true}
 local CHOICES = {
     mapReveal = {off = true, soft = true, full = true},
+    mapLevelMode = {labels = true, tooltip = true},
     questDifficulty = {all = true, nogray = true, nogreen = true},
     goldScope = {all = true, faction = true, current = true},
     ttLayout = {compact = true, lines = true, blizz = true},
@@ -507,6 +511,20 @@ function L.TrimUTF8(value, limit)
         stop = stop - 1
     end
     return value:sub(1, stop)
+end
+
+-- How a zone's level range fits the player: "fit" inside it, "low" when the player is above it
+-- (the zone is too low), "high" when the player is below it (the zone is too high).
+function L.LevelBand(level, low, high)
+    level = tonumber(level) or 1
+    if level > high then return "low" end
+    if level < low then return "high" end
+    return "fit"
+end
+
+function L.LevelRange(low, high)
+    if low == high then return tostring(low) end
+    return low .. "–" .. high
 end
 
 -- Accepts "45.2 67.8", "45,2 67,8" and "45.2, 67.8", with an optional title afterwards.

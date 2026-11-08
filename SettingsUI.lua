@@ -199,6 +199,23 @@ function U.builders.map(v, p)
     })
     v:Label(p, tr("Koordinaten zeigt die Weltkarte selbst an. Das Aufdecken lässt sich auch im Filtermenü der Weltkarte umschalten.",
         "The world map shows coordinates itself. Revealing can also be toggled in the world map's filter menu."), 0, y - 8, 552, 36, "GameFontHighlightSmall", "muted")
+    y = y - 60
+    section(v, p, tr("Levelbereiche", "Level ranges"), y)
+    y = checks(v, p, y - 28, {
+        {"mapLevels", tr("Levelbereiche auf Kontinentkarten", "Level ranges on continent maps"),
+            tr("Grün: passend für deine Stufe, grau: zu niedrig, rot: zu hoch. Die Maus über einem Gebiet zeigt Mindest- und Höchststufe.",
+                "Green: right for your level, grey: too low, red: too high. Hovering a zone shows its minimum and maximum level.")},
+        {"mapLevelDungeons", tr("Dungeons des Gebiets im Tooltip", "The zone's dungeons in the tooltip")},
+    })
+    v:Label(p, tr("Anzeige", "Display"), 0, y - 4, 120, 20, "GameFontHighlightSmall", "muted")
+    v:Dropdown(p, "mapLevelMode", 124, y, 300, {{"labels", tr("Kartenbeschriftung und Tooltip", "Map labels and tooltip")}, {"tooltip", tr("Nur Tooltip", "Tooltip only")}})
+    y = y - 38
+    local other = NS.MapTools.LevelsElsewhere()
+    if other then
+        v:Label(p, string.format(tr("%s zeigt Levelbereiche bereits auf der Karte an. Die eigene Anzeige bleibt deshalb aus.",
+            "%s already shows level ranges on the map, so this display stays off."), other), 0, y, 552, 36, "GameFontHighlightSmall", "muted")
+        y = y - 40
+    end
     return -y + 60
 end
 

@@ -3,6 +3,10 @@ ZENIAL Utility includes the following third-party material.
 RevealData.lua contains map overlay tables taken from OpenMap (Data/Reveal.lua).
 They only list texture file IDs of the game's own map art; no artwork is included.
 
+LevelData.lua contains zone level ranges taken from OpenMap (Data/Forever/Levels.lua,
+compiled there from the Warcraft Wiki) and dungeon entrances with their level ranges
+taken from OpenMap (Data/Forever/Places.lua, built there from the game's tables).
+
 MIT License
 
 Copyright (c) 2026 OpenMap contributors

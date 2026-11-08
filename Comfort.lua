@@ -97,6 +97,7 @@ local ERROR_GROUPS = {
 
 function C.IsFiltered(messageType)
     if not on("errorFilter") or not A.Public(messageType) or type(messageType) ~= "number" then return false end
+    if db().errAll then return true end
     for key, names in pairs(ERROR_GROUPS) do
         if db()[key] then
             for _, name in ipairs(names) do
@@ -107,12 +108,38 @@ function C.IsFiltered(messageType)
     return false
 end
 
+-- The client's TryDisplayMessage shows the text and then plays the sound of the same message type
+-- (GetGameMessageInfo: voice line, otherwise sound kit). For a filtered type, the two parts are
+-- rebuilt separately with the same public calls, so text and sound can be switched independently.
+local function playErrorSound(messageType)
+    local _, soundKitID, voiceID = A.Call(_G.GetGameMessageInfo, messageType)
+    local sound = _G.C_Sound
+    if voiceID then
+        if sound and type(sound.PlayVocalErrorSound) == "function" then A.Call(sound.PlayVocalErrorSound, voiceID)
+        else A.Call(_G.PlayVocalErrorSoundID, voiceID) end
+    elseif soundKitID then
+        A.Call(_G.PlaySound, soundKitID)
+    end
+end
+
+local function showFiltered(frame, messageType, message, r, g, b)
+    local data = db()
+    local text, sound = data.errShowText == true, data.errPlaySound == true
+    if text and sound then return frame:TryDisplayMessage(messageType, message, r, g, b) end
+    if not text and not sound then return end
+    if type(frame.GetMessagesSuppressed) == "function" and frame:GetMessagesSuppressed() then return end
+    if type(frame.ShouldDisplayMessageType) == "function" and not frame:ShouldDisplayMessageType(messageType, message) then return end
+    if text then frame:AddMessage(message, r, g, b, 1.0, messageType) end
+    if sound then playErrorSound(messageType) end
+end
+
 local errorListener = A.Listener({UI_ERROR_MESSAGE = function(messageType, message)
     local frame = _G.UIErrorsFrame
-    if not frame or C.IsFiltered(messageType) then return end
+    if not frame then return end
     local color = _G.RED_FONT_COLOR
     local r, g, b = 1, .1, .1
     if color and color.GetRGB then r, g, b = color:GetRGB() end
+    if C.IsFiltered(messageType) then return showFiltered(frame, messageType, message, r, g, b) end
     frame:TryDisplayMessage(messageType, message, r, g, b)
 end})
 

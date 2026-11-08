@@ -380,11 +380,14 @@ function U.builders.interface(v, p)
     })
     section(v, p, tr("Fehlermeldungen", "Error messages"), y - 10)
     y = checks(v, p, y - 38, {
-        {"errorFilter", tr("Wiederkehrende rote Meldungen ausblenden", "Hide repeating red messages")},
+        {"errorFilter", tr("Wiederkehrende rote Meldungen filtern", "Filter repeating red messages"), tr("Gilt nur für die gewählten Arten. Andere Fehler kommen unverändert durch.", "Only for the chosen kinds. Other errors pass through unchanged.")},
+        {"errShowText", tr("Gefilterte: rote Meldung trotzdem anzeigen", "Filtered: still show the red message")},
+        {"errPlaySound", tr("Gefilterte: Fehlerton trotzdem abspielen", "Filtered: still play the error sound"), tr("Auch Sprachausgabe wie „Das ist noch nicht bereit“. Andere Sounds bleiben unberührt.", "Includes voice lines like \"That ability isn't ready yet\". Other sounds stay untouched.")},
         {"errResource", tr("Nicht genug Mana, Energie oder Wut", "Not enough mana, energy or rage")},
         {"errCooldown", tr("Fähigkeit nicht bereit", "Ability not ready")},
         {"errRange", tr("Ziel außer Reichweite", "Target out of range")},
         {"errTarget", tr("Kein oder ungültiges Ziel", "No or invalid target")},
+        {"errAll", tr("Alle gewöhnlichen roten Fehlermeldungen filtern", "Filter all ordinary red error messages"), tr("Gelbe Hinweise und Systemmeldungen bleiben.", "Yellow notices and system messages stay.")},
     })
     section(v, p, tr("Oberfläche", "Interface"), y - 10)
     y = y - 38

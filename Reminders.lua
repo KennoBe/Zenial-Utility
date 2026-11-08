@@ -126,6 +126,7 @@ local function learnedRankIndex(chain)
     end
     return best
 end
+R.LearnedRankIndex = learnedRankIndex
 
 local function isLearned(entry)
     if entry.tracking then return isKnownAny(entry.tracking) end

@@ -348,6 +348,123 @@ end
 ----------------------------------------------------------------------
 -- Interface and small helpers
 ----------------------------------------------------------------------
+----------------------------------------------------------------------
+-- Action bars: outdated spell ranks and their exceptions
+----------------------------------------------------------------------
+local RANK_ROWS = 8
+
+local function rankRow(v, p, y, buttons)
+    local row = CreateFrame("Frame", nil, p)
+    row:SetSize(552, 28)
+    row:SetPoint("TOPLEFT", 0, y)
+    row.label = T.Text(row, "", "GameFontHighlightSmall", "text")
+    row.label:SetPoint("LEFT", 0, 0)
+    row.label:SetWidth(552 - #buttons * 128)
+    local right = 0
+    for index = #buttons, 1, -1 do
+        local spec = buttons[index]
+        local button = T.Button(row, spec[1], 122, 24, function(self)
+            spec[2](self:GetParent())
+            v:Changed()
+        end, "secondary")
+        button:SetPoint("RIGHT", -right, 0)
+        right = right + 128
+    end
+    row:Hide()
+    return row
+end
+
+local function spellLabel(spell, rank)
+    local name = A.SpellName(spell) or ("#" .. tostring(spell))
+    return rank and rank > 0 and string.format(tr("%s (Rang %d)", "%s (Rank %d)"), name, rank) or name
+end
+
+function U.RefreshRankRows(v)
+    local K = NS.ActionRanks
+    local open, ignored = {}, {}
+    for slot = 1, 180 do
+        local mark = K.marks[slot]
+        if mark and not mark.ignored then open[#open + 1] = mark end
+    end
+    local spells, slots = {}, {}
+    for spell in pairs(db().rankIgnore) do spells[#spells + 1] = spell end
+    for slot in pairs(K.IgnoredSlots()) do slots[#slots + 1] = slot end
+    table.sort(spells)
+    table.sort(slots)
+    for _, spell in ipairs(spells) do ignored[#ignored + 1] = {spell = spell} end
+    for _, slot in ipairs(slots) do ignored[#ignored + 1] = {slot = slot} end
+    for index, row in ipairs(v.rankRows) do
+        local mark = open[index]
+        row.mark = mark
+        if mark then
+            row.label:SetText(string.format(tr("Slot %d: %s – verfügbar: Rang %d", "Slot %d: %s – available: Rank %d"),
+                mark.slot, spellLabel(mark.spell, mark.rank), mark.bestRank or 0))
+        end
+        row:SetShown(mark ~= nil)
+    end
+    for index, row in ipairs(v.rankIgnoreRows) do
+        local entry = ignored[index]
+        row.entry = entry
+        if entry and entry.spell then
+            row.label:SetText(tr("Zauber: ", "Spell: ") .. spellLabel(entry.spell))
+        elseif entry then
+            local kind, id = A.Call(GetActionInfo, entry.slot)
+            local held = kind == "spell" and type(id) == "number" and ("  ·  " .. spellLabel(id)) or ""
+            row.label:SetText(string.format("Slot %d", entry.slot) .. held)
+        end
+        row:SetShown(entry ~= nil)
+    end
+    local status
+    if not K.Enabled() then
+        status = tr("Die Prüfung ist aus.", "The check is off.")
+    elseif #open == 0 then
+        status = tr("Keine veralteten Ränge auf den Aktionsleisten.", "No outdated ranks on the action bars.")
+    else
+        status = string.format(tr("%d Aktionsbutton(s) mit veraltetem Rang.", "%d action button(s) with an outdated rank."), #open)
+        if #open > RANK_ROWS then status = status .. string.format(tr(" Die ersten %d stehen hier.", " The first %d are listed."), RANK_ROWS) end
+    end
+    v.rankStatus:SetText(status)
+    v.rankIgnoreTitle:SetShown(#ignored > 0)
+end
+
+local function rankSection(v, p, y)
+    local K = NS.ActionRanks
+    section(v, p, tr("Aktionsleisten", "Action bars"), y - 10)
+    y = checks(v, p, y - 38, {
+        {"rankCheck", tr("Veraltete Zauberränge markieren", "Mark outdated spell ranks"),
+            tr("Kleiner Punkt oben links am Button und ein Hinweis im Tooltip. Leisten und Makros bleiben unverändert.",
+                "Small dot in the button's top-left corner and a note in the tooltip. Bars and macros stay unchanged.")},
+        {"rankNotify", tr("Nach dem Erlernen kurz im Chat melden", "Short chat note after learning")},
+    })
+    hint(v, p, tr("Nur Blizzard-Aktionsleisten und direkt abgelegte Zauber, keine Makros. Gewolltes Downranking: Zauber oder Slot ignorieren.",
+        "Only Blizzard action bars and spells placed directly, no macros. Deliberate downranking: ignore the spell or the slot."), y, 30)
+    y = y - 34
+    v.rankStatus = v:Label(p, "", 0, y, 552, 20, "GameFontHighlightSmall")
+    y = y - 26
+    v.rankRows = {}
+    for index = 1, RANK_ROWS do
+        v.rankRows[index] = rankRow(v, p, y, {
+            {tr("Zauber ignorieren", "Ignore spell"), function(row) if row.mark then K.IgnoreSpell(row.mark.spell, true) end end},
+            {tr("Slot ignorieren", "Ignore slot"), function(row) if row.mark then K.IgnoreSlot(row.mark.slot, true) end end},
+        })
+        y = y - 30
+    end
+    v.rankIgnoreTitle = v:Label(p, tr("Ausnahmen", "Exceptions"), 0, y - 6, 552, 20, "GameFontNormal", "gold")
+    y = y - 30
+    v.rankIgnoreRows = {}
+    for index = 1, RANK_ROWS do
+        v.rankIgnoreRows[index] = rankRow(v, p, y, {
+            {tr("Wieder prüfen", "Check again"), function(row)
+                local entry = row.entry
+                if entry and entry.spell then K.IgnoreSpell(entry.spell, false) elseif entry then K.IgnoreSlot(entry.slot, false) end
+            end},
+        })
+        y = y - 30
+    end
+    v:AddUpdate(function() U.RefreshRankRows(v) end)
+    return y
+end
+
 function U.builders.interface(v, p)
     local F = NS.LootFeed
     section(v, p, "Quicker Loot", 0)
@@ -400,6 +517,7 @@ function U.builders.interface(v, p)
         visibility(v, p, row[1], row[2], y)
         y = y - 34
     end
+    y = rankSection(v, p, y)
     return -y + 30
 end
 

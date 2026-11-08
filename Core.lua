@@ -31,6 +31,7 @@ App:AddModule(NS.Inventory)
 App:AddModule(NS.Tooltips)
 App:AddModule(NS.Comfort)
 App:AddModule(NS.LootFeed)
+App:AddModule(NS.ActionRanks)
 
 function App:GraphicsConfirm()
     NS.GraphicsConfirm.Show()

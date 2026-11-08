@@ -100,9 +100,9 @@ local CARDS = {
             "Move the bag window, XP numbers, alts as recipients, destroy grey items."),
         status = function() return enabledText({"bagMove", "xpText", "mailAlts", "destroyGray"}) end},
     {page = "interface", title = U.Titles.interface, toggle = "modQoL",
-        text = tr("Quicker Loot, Dialoge, Fehlerfilter und Elemente ausblenden.",
-            "Quicker Loot, dialogs, error filter and hiding elements."),
-        status = function() return enabledText({"fastLoot", "lootFeed", "lootGreed", "skipGossip", "declineDuels", "bgRelease", "errorFilter"}) end},
+        text = tr("Quicker Loot, Dialoge, Fehlerfilter, Zauberränge auf Aktionsleisten und Elemente ausblenden.",
+            "Quicker Loot, dialogs, error filter, spell ranks on action bars and hiding elements."),
+        status = function() return enabledText({"fastLoot", "lootFeed", "lootGreed", "skipGossip", "declineDuels", "bgRelease", "errorFilter", "rankCheck"}) end},
     {page = "profiles", title = U.Titles.profiles,
         text = tr("Benannte Einstellungen, als Text teilbar.", "Named settings, shareable as text."),
         status = function() return tr("Aktiv: ", "Active: ") .. NS.Profiles.Active() end},
@@ -297,7 +297,9 @@ function U.builders.characters(v, p)
 end
 
 function U.RefreshPageData(v)
-    if v.index == "extras" and v.rollLabel then
+    if v.index == "interface" and v.rankRows then
+        U.RefreshRankRows(v)
+    elseif v.index == "extras" and v.rollLabel then
         local lines = {}
         local won = {}
         for _, row in ipairs(L.RollWinners(NS.Helpers.rolls)) do won[row] = true end

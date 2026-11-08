@@ -92,6 +92,8 @@ L.Defaults = {
     errAll = false, -- every UI_ERROR_MESSAGE, not only the kinds above
     errShowText = false, -- filtered kinds still show their red text
     errPlaySound = false, -- filtered kinds still play their error sound or voice line
+    rankCheck = false, -- mark action buttons that hold a lower rank than the one learned
+    rankNotify = false, -- short chat note when newly learned ranks leave old ones on the bars
     hideBags = "show", -- show | hide | hover
     hideMicro = "show",
     hideClock = "show",
@@ -243,7 +245,42 @@ local function repairInfoBar(raw)
     return out
 end
 
-L.Structured = {warnBars = repairBars, reminders = repairReminders, infoBar = repairInfoBar}
+-- A set of IDs ({[id] = true}): spell IDs or action slots the rank check leaves alone.
+function L.RepairIdSet(raw)
+    local out = {}
+    if type(raw) ~= "table" then return out end
+    for key, value in pairs(raw) do
+        if value == true and type(key) == "number" and key == math.floor(key) and key > 0 and key < 2 ^ 31 then out[key] = true end
+    end
+    return out
+end
+
+L.Structured = {warnBars = repairBars, reminders = repairReminders, infoBar = repairInfoBar, rankIgnore = L.RepairIdSet}
+
+----------------------------------------------------------------------
+-- Spell ranks. Rows are {spell, rank}. Only IDs and rank numbers decide, never words of the
+-- spell's text, so every client language works.
+----------------------------------------------------------------------
+function L.RankNumber(text)
+    if type(text) ~= "string" then return nil end
+    return tonumber(text:match("%d+"))
+end
+
+-- Rank numbers decide; a row without one is never older or newer, so unranked spells that
+-- share a name raise no mark.
+function L.RankBetter(a, b)
+    if not a or not b or a.spell == b.spell then return false end
+    local ra, rb = tonumber(a.rank) or 0, tonumber(b.rank) or 0
+    return ra > 0 and rb > 0 and ra > rb
+end
+
+function L.BestRank(rows)
+    local best
+    for _, row in ipairs(rows or {}) do
+        if not best or L.RankBetter(row, best) then best = row end
+    end
+    return best
+end
 
 -- The settings a named profile carries. Measurements and per-character data stay outside.
 function L.ProfileSnapshot(db)

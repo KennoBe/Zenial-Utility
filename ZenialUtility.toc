@@ -25,6 +25,7 @@ ReagentData.lua
 AutoBuy.lua
 BuffData.lua
 Reminders.lua
+ActionRanks.lua
 Quests.lua
 Inventory.lua
 InfoBar.lua

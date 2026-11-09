@@ -7,6 +7,9 @@ local T, tr, A, W = NS.Theme, NS.Text, NS.Adapter, NS.Widgets
 
 local WIDTH, HEIGHT, SIDEBAR = 900, 680, 196
 local NAV_TOP = -84
+-- Inside the ZENIAL Community addon manager (856-pixel logical canvas, at least 464 high) the same
+-- sidebar layout is used, only narrower and without the window's title bar.
+local EMBED_SIDEBAR, EMBED_NAV_TOP, EMBED_TOP = 176, -12, -40
 
 -- Old page names keep working for /zutil <page> and for links from other addons.
 U.Aliases = {
@@ -118,31 +121,26 @@ function U.ResetWindow()
     end
 end
 
-local function navButton(v, f, def, embedded, index)
+local function navButton(v, f, def, width)
     local id = def.id
-    local button = T.Button(f, pick(def.title), embedded and 88 or SIDEBAR - 24, embedded and 30 or 28, function() v:SelectPage(id) end, "secondary")
-    if embedded then
-        -- Two rows of nine fit the 856-pixel Community canvas; the last slot of the second row holds the search.
-        button:SetPoint("TOPLEFT", 12 + (index - 1) % 9 * 92, -8 - math.floor((index - 1) / 9) * 34)
-    else
-        T.StyleNav(button, def.icon)
-        -- The label starts right of the icon instead of centred over it; a long name
-        -- switches to the smaller font rather than running into the icon or the edge.
-        local label = button.GetFontString and button:GetFontString()
-        if label and def.icon then
-            label:ClearAllPoints()
-            label:SetPoint("LEFT", 36, 0)
-            label:SetPoint("RIGHT", -8, 0)
-            label:SetJustifyH("LEFT")
-            if label.SetWordWrap then label:SetWordWrap(false) end
-            local room = button:GetWidth() - 44
-            if (label:GetStringWidth() or 0) > room then
-                -- The template swaps fonts on hover, so the button's own font objects change.
-                if button.SetNormalFontObject then button:SetNormalFontObject("GameFontNormalSmall") end
-                if button.SetHighlightFontObject then button:SetHighlightFontObject("GameFontHighlightSmall") end
-                if button.SetDisabledFontObject then button:SetDisabledFontObject("GameFontDisableSmall") end
-                label:SetFontObject("GameFontNormalSmall")
-            end
+    local button = T.Button(f, pick(def.title), width, 28, function() v:SelectPage(id) end, "secondary")
+    T.StyleNav(button, def.icon)
+    -- The label starts right of the icon instead of centred over it; a long name
+    -- switches to the smaller font rather than running into the icon or the edge.
+    local label = button.GetFontString and button:GetFontString()
+    if label and def.icon then
+        label:ClearAllPoints()
+        label:SetPoint("LEFT", 36, 0)
+        label:SetPoint("RIGHT", -8, 0)
+        label:SetJustifyH("LEFT")
+        if label.SetWordWrap then label:SetWordWrap(false) end
+        local room = button:GetWidth() - 44
+        if (label:GetStringWidth() or 0) > room then
+            -- The template swaps fonts on hover, so the button's own font objects change.
+            if button.SetNormalFontObject then button:SetNormalFontObject("GameFontNormalSmall") end
+            if button.SetHighlightFontObject then button:SetHighlightFontObject("GameFontHighlightSmall") end
+            if button.SetDisabledFontObject then button:SetDisabledFontObject("GameFontDisableSmall") end
+            label:SetFontObject("GameFontNormalSmall")
         end
     end
     W.Tooltip(button, pick(def.title), pick(def.desc))
@@ -172,8 +170,11 @@ function U.Create(parent, embedded)
     v.anchors = {}
     function v:Changed() NS.App.db = self.draft; NS.App:Changed() end
 
-    local left = embedded and 16 or SIDEBAR + 32
-    local top = embedded and -80 or NAV_TOP
+    local sidebar = embedded and EMBED_SIDEBAR or SIDEBAR
+    local sideX = embedded and 0 or 14
+    local navTop = embedded and EMBED_NAV_TOP or NAV_TOP
+    local left = embedded and sideX + sidebar + 20 or SIDEBAR + 32
+    local top = embedded and EMBED_TOP or NAV_TOP
 
     -- Title bar
     if not embedded then
@@ -183,41 +184,39 @@ function U.Create(parent, embedded)
         local sub = T.Text(f, tr("Einstellungen", "Settings") .. (type(version) == "string" and ("  ·  " .. version) or ""), "GameFontHighlightSmall", "muted")
         sub:SetPoint("TOPLEFT", 26, -48)
         v.close = W.CloseButton(f, function() f:Hide() end)
-        -- Sidebar
-        local side = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
-        side:SetPoint("TOPLEFT", 14, NAV_TOP + 8)
-        side:SetPoint("BOTTOMLEFT", 14, 14)
-        side:SetWidth(SIDEBAR)
-        T.Panel(side, "inset")
     end
+    -- Sidebar
+    local side = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    side:SetPoint("TOPLEFT", sideX, navTop + 8)
+    side:SetPoint("BOTTOMLEFT", sideX, embedded and 0 or 14)
+    side:SetWidth(sidebar)
+    T.Panel(side, "inset")
 
     -- Navigation, with small group headings in the sidebar.
     v.nav = {}
-    local y, lastGroup = NAV_TOP, nil
-    for index, def in ipairs(U.Pages) do
-        local button = navButton(v, f, def, embedded, index)
-        if not embedded then
-            if def.group and def.group ~= lastGroup then
-                if lastGroup then y = y - 6 end
-                local label = T.Text(f, pick(def.group), "GameFontHighlightSmall", "muted")
-                label:SetPoint("TOPLEFT", 28, y - 4)
-                y = y - 20
-                lastGroup = def.group
-            end
-            button:SetPoint("TOPLEFT", 26, y)
-            y = y - 30
+    local y, lastGroup = navTop, nil
+    for _, def in ipairs(U.Pages) do
+        local button = navButton(v, f, def, sidebar - 24)
+        if def.group and def.group ~= lastGroup then
+            if lastGroup then y = y - 6 end
+            local label = T.Text(f, pick(def.group), "GameFontHighlightSmall", "muted")
+            label:SetPoint("TOPLEFT", sideX + 14, y - 4)
+            y = y - 20
+            lastGroup = def.group
         end
+        button:SetPoint("TOPLEFT", sideX + 12, y)
+        y = y - 30
         v.nav[def.id] = button
     end
 
     -- Page header: title, one-line description, restore defaults.
-    local headerWidth = embedded and 560 or (WIDTH - left - 40)
+    local headerWidth = (embedded and 856 or WIDTH) - left - 40
     v.pageTitle = T.Text(f, "", "GameFontNormalLarge", "gold")
     v.pageTitle:SetPoint("TOPLEFT", left, top)
     v.pageTitle:SetWidth(headerWidth - 220)
     v.pageDesc = T.Text(f, "", "GameFontHighlightSmall", "textSoft")
     v.pageDesc:SetPoint("TOPLEFT", left, top - 24)
-    v.pageDesc:SetWidth(embedded and 780 or headerWidth)
+    v.pageDesc:SetWidth(headerWidth)
     v.pageDesc:SetHeight(28)
     v.resetPage = T.Button(f, tr("Standardwerte wiederherstellen", "Restore defaults"), 220, 24, function() U.ConfirmPageReset(v) end, "secondary")
     v.resetPage:SetPoint("TOPRIGHT", embedded and -20 or -40, top + 2)
@@ -232,7 +231,7 @@ function U.Create(parent, embedded)
     -- Footer: result of the last action, autosave note.
     v.message = T.Text(f, "", "GameFontHighlightSmall", "gold")
     v.message:SetPoint("BOTTOMLEFT", left, embedded and 6 or 16)
-    v.message:SetWidth(embedded and 520 or 420)
+    v.message:SetWidth(embedded and 380 or 420)
     v.footer = T.Text(f, "", "GameFontHighlightSmall", "muted")
     v.footer:SetPoint("BOTTOMRIGHT", embedded and -20 or -28, embedded and 6 or 16)
     v.footer:SetWidth(260)
@@ -255,11 +254,10 @@ function U.Create(parent, embedded)
     fixed:Hide()
     v.fixedHost = fixed
 
-    -- Search box: on the free slot of the second tab row, or in the title bar of the own window.
-    local search = W.Edit(f, 0, 0, embedded and 88 or 260, function(text) U.ShowSearch(v, text) end)
+    -- Search box: top right, in the title bar of the own window or above the page header when embedded.
+    local search = W.Edit(f, 0, 0, 260, function(text) U.ShowSearch(v, text) end)
     search:ClearAllPoints()
-    if embedded then search:SetPoint("TOPLEFT", 12 + 8 * 92, -42)
-    else search:SetPoint("TOPRIGHT", -52, -24) end
+    search:SetPoint("TOPRIGHT", embedded and -20 or -52, embedded and -6 or -24)
     W.Tooltip(search, tr("Einstellungen suchen", "Search settings"),
         tr("Durchsucht alle Seiten, auf Deutsch und Englisch. Enter öffnet den ersten Treffer.", "Searches every page, in German and English. Enter opens the first match."))
     search:SetScript("OnEnterPressed", function(self)

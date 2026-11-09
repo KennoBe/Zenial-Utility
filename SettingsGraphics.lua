@@ -144,8 +144,7 @@ function U.fixed.graphics(v, page)
     local footer = CreateFrame("Frame", nil, page)
     footer:SetPoint("BOTTOMLEFT", 0, 0)
     footer:SetPoint("BOTTOMRIGHT", 0, 0)
-    -- Embedded pages are wide enough for one row, which leaves more room for the list.
-    footer:SetHeight(v.embedded and 34 or 72)
+    footer:SetHeight(72)
     v.graphicsApply = T.Button(footer, tr("Änderungen übernehmen", "Apply changes"), 190, 28, function()
         local ok, changed, refused, clamped, restart = G.Apply(db())
         if ok == false and changed == "combat" then
@@ -172,7 +171,7 @@ function U.fixed.graphics(v, page)
         if not ok then v:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")) end
         U.Refresh()
     end, "secondary")
-    v.graphicsBackup:SetPoint("TOPLEFT", v.embedded and 376 or 0, v.embedded and -6 or -38)
+    v.graphicsBackup:SetPoint("TOPLEFT", 0, -38)
     W.Tooltip(v.graphicsBackup, tr("Meine früheren Werte", "My previous values"), tr("Stellt alles her, was du vor der ersten Änderung durch ZENIAL Utility eingestellt hattest.", "Restores everything you had set before ZENIAL Utility first changed it."))
     v.graphicsDefaults = T.Button(footer, tr("Alles auf Spielstandard …", "All to game default …"), 190, 26, function()
         NS.SettingsControls.Confirm(v, tr("Alle Grafikwerte auf Spielstandard?", "All graphics values to game default?"),
@@ -184,11 +183,7 @@ function U.fixed.graphics(v, page)
                 U.Refresh()
             end, "danger")
     end, "danger")
-    v.graphicsDefaults:SetPoint("TOPLEFT", v.embedded and 574 or 198, v.embedded and -6 or -38)
-    if v.embedded then
-        pending:ClearAllPoints()
-        pending:SetPoint("LEFT", v.graphicsDefaults, "RIGHT", 10, 0)
-    end
+    v.graphicsDefaults:SetPoint("TOPLEFT", 198, -38)
 
     local area = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate" or nil)
     area:SetPoint("TOPLEFT", intro, "BOTTOMLEFT", 0, 0)

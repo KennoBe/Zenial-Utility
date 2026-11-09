@@ -126,6 +126,24 @@ local function navButton(v, f, def, embedded, index)
         button:SetPoint("TOPLEFT", 12 + (index - 1) % 9 * 92, -8 - math.floor((index - 1) / 9) * 34)
     else
         T.StyleNav(button, def.icon)
+        -- The label starts right of the icon instead of centred over it; a long name
+        -- switches to the smaller font rather than running into the icon or the edge.
+        local label = button.GetFontString and button:GetFontString()
+        if label and def.icon then
+            label:ClearAllPoints()
+            label:SetPoint("LEFT", 36, 0)
+            label:SetPoint("RIGHT", -8, 0)
+            label:SetJustifyH("LEFT")
+            if label.SetWordWrap then label:SetWordWrap(false) end
+            local room = button:GetWidth() - 44
+            if (label:GetStringWidth() or 0) > room then
+                -- The template swaps fonts on hover, so the button's own font objects change.
+                if button.SetNormalFontObject then button:SetNormalFontObject("GameFontNormalSmall") end
+                if button.SetHighlightFontObject then button:SetHighlightFontObject("GameFontHighlightSmall") end
+                if button.SetDisabledFontObject then button:SetDisabledFontObject("GameFontDisableSmall") end
+                label:SetFontObject("GameFontNormalSmall")
+            end
+        end
     end
     W.Tooltip(button, pick(def.title), pick(def.desc))
     return button

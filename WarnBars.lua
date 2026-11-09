@@ -8,6 +8,18 @@ local STATE_COLOR = {missing = "danger", expiring = "gold", rank = "accentBlue",
 
 local function db() return NS.App.db end
 
+-- Icons, the name and the gaps all move the whole bar while move mode is on.
+local function dragStart(self)
+    local bar = self.bar or self
+    if B.moving then bar:StartMoving() end
+end
+local function dragStop(self)
+    local bar = self.bar or self
+    if not B.moving then return end
+    bar:StopMovingOrSizing()
+    if bar.SavePosition then bar:SavePosition() end
+end
+
 local function iconFrame(bar)
     local icon = CreateFrame("Frame", nil, bar, BackdropTemplateMixin and "BackdropTemplate" or nil)
     icon.texture = icon:CreateTexture(nil, "ARTWORK")
@@ -29,6 +41,10 @@ local function iconFrame(bar)
     icon.count:SetPoint("BOTTOMRIGHT", -2, 2)
     icon.count:SetJustifyH("RIGHT")
     icon:EnableMouse(true)
+    icon.bar = bar
+    icon:RegisterForDrag("LeftButton")
+    icon:SetScript("OnDragStart", dragStart)
+    icon:SetScript("OnDragStop", dragStop)
     icon:SetScript("OnEnter", function(self)
         local tip, item = _G.GameTooltip, self.item
         if not tip or not tip.SetOwner or not item then return end
@@ -68,13 +84,20 @@ local function barFrame(id)
     frame:RegisterForDrag("LeftButton")
     frame.icons = {}
     frame.id = id
-    frame:SetScript("OnDragStart", function(self) if B.moving then self:StartMoving() end end)
-    frame:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        savePosition(self, self.id)
-    end)
+    function frame:SavePosition() savePosition(self, self.id) end
+    frame:SetScript("OnDragStart", dragStart)
+    frame:SetScript("OnDragStop", dragStop)
     frame.label = T.Text(frame, "", "GameFontHighlightSmall", "gold")
     frame.label:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+    -- The name above the bar is a handle of its own in move mode.
+    frame.handle = CreateFrame("Frame", nil, frame)
+    frame.handle.bar = frame
+    frame.handle:SetPoint("TOPLEFT", frame.label, "TOPLEFT", -2, 2)
+    frame.handle:SetPoint("BOTTOMRIGHT", frame.label, "BOTTOMRIGHT", 2, -2)
+    frame.handle:RegisterForDrag("LeftButton")
+    frame.handle:SetScript("OnDragStart", dragStart)
+    frame.handle:SetScript("OnDragStop", dragStop)
+    frame.handle:EnableMouse(false)
     B.frames[id] = frame
     return frame
 end
@@ -170,6 +193,7 @@ function B.Render(items)
             place(frame, spec)
             layout(frame, spec, list)
             frame:EnableMouse(B.moving)
+            frame.handle:EnableMouse(B.moving)
             frame.label:SetText(spec.name)
             frame.label:SetShown(B.moving or B.preview)
             if B.moving then T.Panel(frame, "inset") elseif frame.SetBackdrop then frame:SetBackdrop(nil) end

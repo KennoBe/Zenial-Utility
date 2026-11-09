@@ -23,7 +23,7 @@ function B.SetTarget(item, value)
 end
 
 local function isKnown(row)
-    if row.poison then return A.SpellKnown(2842) end
+    if row.poison or row.finished then return A.SpellKnown(2842) end
     if not row.spells then return true end
     for _, spell in ipairs(row.spells) do
         if A.SpellKnown(spell) then return true end
@@ -37,11 +37,14 @@ function B.HasReagentEconomy()
     return A.Call(IsPlayerSpell, D.reagentEconomySpell) == true
 end
 
--- The class rows that matter to this character right now.
+-- Every row of this character's class, so anything can be chosen before or after learning it.
+-- `learned`: the spell (or Poisons skill) is known; `spared`: Reagent Economy makes it unnecessary.
+-- Only a target above 0 buys, so showing more rows never buys anything by itself.
 function B.Catalog()
     local out, economy = {}, B.HasReagentEconomy()
     for _, row in ipairs(D.classes[A.PlayerClass()] or {}) do
-        if isKnown(row) and not (economy and row.economy) then out[#out + 1] = row end
+        out[#out + 1] = {item = row.item, poison = row.poison, finished = row.finished,
+            learned = isKnown(row), spared = economy and row.economy == true}
     end
     return out
 end

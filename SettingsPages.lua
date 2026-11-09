@@ -363,12 +363,12 @@ local function buildRestock(form, v, p)
     local _, height = form:Text(tr("Zielmengen je Reagenz (0 = nicht kaufen). In Klammern: was du gerade dabei hast.", "Target amount per reagent (0 = do not buy). In brackets: what you carry right now."), 0)
     form.y = form.y - height - 6
     if B.HasReagentEconomy() then
-        local _, h2 = form:Text(tr("Reagent Economy ist erlernt: dadurch entfallende Reagenzien fehlen hier.", "Reagent Economy is learned: reagents it removes are left out."), 0)
+        local _, h2 = form:Text(tr("Reagent Economy ist erlernt: mit „nicht nötig“ markierte Reagenzien brauchst du nicht mehr.", "Reagent Economy is learned: reagents marked “not needed” are no longer required."), 0)
         form.y = form.y - h2 - 6
     end
     local catalog = B.Catalog()
     if #catalog == 0 then
-        local _, h3 = form:Text(tr("Noch nichts einzustellen. Erlernte Zauber mit Reagenzien erscheinen hier von selbst.", "Nothing to set yet. Learned spells with reagents appear here on their own."), 0, nil, nil, "textSoft")
+        local _, h3 = form:Text(tr("Deine Klasse braucht keine Reagenzien vom Händler.", "Your class needs no reagents from vendors."), 0, nil, nil, "textSoft")
         form.y = form.y - h3 - 6
     end
     local items = _G.C_Item
@@ -380,7 +380,10 @@ local function buildRestock(form, v, p)
         label:SetWidth(420)
         v:AddUpdate(function()
             local itemName = items and A.Call(items.GetItemNameByID, item)
-            label:SetText(string.format("%s  (%d)", itemName or ("#" .. item), A.ItemCount(item)))
+            -- Every class item can be chosen; a short note says when it is not needed yet.
+            local note = (entry.spared and tr("  · nicht nötig", "  · not needed"))
+                or (not entry.learned and tr("  · noch nicht erlernt", "  · not learned yet")) or ""
+            label:SetText(string.format("%s  (%d)%s", itemName or ("#" .. item), A.ItemCount(item), note))
             T.Tint(label, "SetTextColor", enabled() and "text" or "disabledText")
         end)
         local edit = W.Edit(p, 440, y, 90, function(text)

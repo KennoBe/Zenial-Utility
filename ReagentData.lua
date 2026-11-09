@@ -1,7 +1,8 @@
 local _, NS = ...
 
--- What each class may want from a vendor. `spells`: the row counts once one of them is known.
--- `economy`: Forever's Reagent Economy makes this reagent unnecessary. Item IDs are the classic
+-- What each class may want from a vendor. Every row of the class can be chosen; `spells` only marks
+-- whether the spell that uses it is learned yet. `economy`: Forever's Reagent Economy makes this
+-- reagent unnecessary. `finished`: a ready-made poison, bought only where a vendor sells it. Item IDs are the classic
 -- ones and are not verified against a Forever table; a row only matters if the merchant really
 -- sells that item, so a wrong or removed ID shows nothing instead of buying the wrong thing.
 NS.ReagentData = {
@@ -38,6 +39,7 @@ NS.ReagentData = {
         },
         ROGUE = {
             {item = 5140, spells = {1856, 1857}, economy = true},
+            {item = 5530, spells = {2094}},
             {item = 2928, poison = true},
             {item = 8924, poison = true},
             {item = 2930, poison = true},
@@ -46,6 +48,13 @@ NS.ReagentData = {
             {item = 3371, poison = true},
             {item = 3372, poison = true},
             {item = 8925, poison = true},
+            {item = 8928, finished = true}, {item = 8927, finished = true}, {item = 8926, finished = true},
+            {item = 6950, finished = true}, {item = 6949, finished = true}, {item = 6947, finished = true},
+            {item = 20844, finished = true}, {item = 8985, finished = true}, {item = 8984, finished = true},
+            {item = 2893, finished = true}, {item = 2892, finished = true},
+            {item = 3776, finished = true}, {item = 3775, finished = true},
+            {item = 9186, finished = true}, {item = 6951, finished = true}, {item = 5237, finished = true},
+            {item = 10922, finished = true}, {item = 10921, finished = true}, {item = 10920, finished = true}, {item = 10918, finished = true},
         },
     },
     -- Finished poisons: enough of them in the bags stops the ingredient purchase.

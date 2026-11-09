@@ -881,6 +881,7 @@ U.AddPage({id = "graphics", group = GROUP_TOOLS, fixed = true, title = {"Grafik"
     keywords = "grafik graphics cvar gras grass sichtweite view distance schatten shadow hdr fps",
     search = {
         {title = {"Vorlage „Schöne Weitsicht“", "“Beautiful views” preset"}, keywords = "preset vorlage weitsicht"},
+        {title = {"Vorlage „Mehr FPS – gute Optik“", "“More FPS – good looks” preset"}, keywords = "preset vorlage fps leistung performance schnell"},
         {title = {"Meine früheren Grafikwerte", "My previous graphics values"}, keywords = "backup zurück restore"},
     }})
 

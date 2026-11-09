@@ -1,5 +1,5 @@
 local _, NS = ...
-local G = {pending = {}, keepSeconds = 30}
+local G = {pending = {}, pendingFrom = {}, keepSeconds = 30}
 NS.Graphics = G
 local A = NS.Adapter
 
@@ -22,11 +22,15 @@ function G.Default(name)
     return api and A.Call(api.GetCVarDefault, name) or nil
 end
 
-local function write(name, value)
+-- Metadata where the client offers it: a locked or read-only setting is never written.
+-- GetCVarInfo returns value, default, account, character, lockedFromUser, secure, readOnly.
+function G.Writable(name)
+    if not G.Exists(name) then return false end
     local api = cvarApi()
-    if not api or type(api.SetCVar) ~= "function" then return false end
-    local ok, result = pcall(api.SetCVar, name, tostring(value))
-    return ok and result ~= false
+    if type(api.GetCVarInfo) ~= "function" then return true end
+    local ok, value, _, _, _, locked, _, readOnly = pcall(api.GetCVarInfo, name)
+    if not ok or value == nil then return true end
+    return locked ~= true and readOnly ~= true
 end
 
 local function same(a, b)
@@ -36,6 +40,34 @@ local function same(a, b)
     return tostring(a) == tostring(b)
 end
 G.Same = same
+
+-- Writes one value and reads it back. The answer is what the client really holds now:
+-- "ok", "clamped" (the client kept a different value) or "refused" (unchanged or error).
+local function write(name, value)
+    local api = cvarApi()
+    if not api or type(api.SetCVar) ~= "function" then return "refused" end
+    local before = G.Current(name)
+    local ok, result = pcall(api.SetCVar, name, tostring(value))
+    if not ok or result == false then return "refused" end
+    local after = G.Current(name)
+    if same(after, value) then return "ok", after end
+    if same(after, before) then return "refused" end
+    return "clamped", after
+end
+
+-- Game menu sliders reset their detail values when written, so they always go first.
+-- Within each group the order is fixed, so the same input always gives the same result.
+local function ordered(values)
+    local names = {}
+    for name in pairs(values) do names[#names + 1] = name end
+    table.sort(names, function(a, b)
+        local menuA, menuB = a:sub(1, 8) == "graphics", b:sub(1, 8) == "graphics"
+        if menuA ~= menuB then return menuA end
+        return a < b
+    end)
+    return names
+end
+G.Ordered = ordered
 
 function G.Rows()
     local out = {}
@@ -57,22 +89,61 @@ function G.AllowedRow(name)
     end
 end
 
+-- A value outside the catalog's range is never written, whoever asks for it.
+function G.InRange(name, value)
+    local row, number = G.AllowedRow(name), tonumber(value)
+    if not row or not number then return false end
+    if row.minimum and number < row.minimum - .0001 then return false end
+    if row.maximum and number > row.maximum + .0001 then return false end
+    return true
+end
+
 function G.Stage(name, value)
-    if not G.AllowedRow(name) then return false end
+    if not G.AllowedRow(name) or not G.InRange(name, value) then return false end
+    G.pendingFrom[name] = nil
     if same(G.Current(name), value) then G.pending[name] = nil else G.pending[name] = tostring(value) end
     return true
 end
 
-function G.StagePreset(key)
+function G.Preset(key)
     for _, preset in ipairs(NS.GraphicsPresets) do
-        if preset.key == key then
-            for name, value in pairs(preset.values) do
-                if G.Exists(name) then G.Stage(name, value) end
-            end
-            return true
+        if preset.key == key then return preset end
+    end
+end
+
+-- What a preset would do on this client, without staging anything.
+function G.PresetPlan(key)
+    local preset = G.Preset(key)
+    if not preset then return nil end
+    local plan = {changes = 0, same = 0, missing = {}, restart = {}}
+    for _, name in ipairs(ordered(preset.values)) do
+        local value = preset.values[name]
+        local row = G.AllowedRow(name)
+        if not row or not G.Writable(name) or not G.InRange(name, value) then
+            plan.missing[#plan.missing + 1] = name
+        elseif same(G.Current(name), value) then
+            plan.same = plan.same + 1
+        else
+            plan.changes = plan.changes + 1
+            if row.restart then plan.restart[#plan.restart + 1] = row.title end
         end
     end
-    return false
+    return plan
+end
+
+-- Choosing another preset replaces what an earlier, unapplied preset staged.
+-- Values the player moved by hand stay staged.
+function G.StagePreset(key)
+    local preset = G.Preset(key)
+    if not preset then return false end
+    for name in pairs(G.pendingFrom) do G.pending[name] = nil end
+    G.pendingFrom = {}
+    for _, name in ipairs(ordered(preset.values)) do
+        local value = preset.values[name]
+        if G.Writable(name) and G.Stage(name, value) and G.pending[name] then G.pendingFrom[name] = key end
+    end
+    G.stagedPreset = key
+    return true
 end
 
 function G.PendingCount()
@@ -81,7 +152,9 @@ function G.PendingCount()
     return count
 end
 
-function G.Discard() G.pending = {} end
+function G.Discard()
+    G.pending, G.pendingFrom, G.stagedPreset = {}, {}, nil
+end
 
 function G.ChangedCount(db)
     local count = 0
@@ -93,36 +166,59 @@ end
 
 -- Writes `values`, remembering the state before ZENIAL Utility ever changed each setting
 -- and arming the timed confirmation with the values from right before this change.
+-- Returns ok, changed, refused (names), clamped (names) and restart (row titles).
 local function commit(db, values, keepBackup)
     if A.Combat() then return false, "combat" end
     -- An unanswered earlier change keeps its older starting value.
-    local revert, refused, changed = db.pendingRevert, {}, 0
-    for name, value in pairs(values) do
+    local revert, refused, clamped, restart, changed = db.pendingRevert, {}, {}, {}, 0
+    -- Game menu sliders also move other catalog settings; those are remembered too.
+    local snapshot = {}
+    for _, section in ipairs(NS.GraphicsCatalog) do
+        for _, row in ipairs(section.rows) do snapshot[row.name] = G.Current(row.name) end
+    end
+    for _, name in ipairs(ordered(values)) do
+        local value = values[name]
         local before = G.Current(name)
         if before ~= nil and not same(before, value) then
-            if write(name, value) then
-                if revert[name] == nil then revert[name] = before end
-                changed = changed + 1
-                if keepBackup and db.cvarBackup[name] == nil then db.cvarBackup[name] = before end
-            else
+            local result = G.Writable(name) and write(name, value) or "refused"
+            if result == "refused" then
                 refused[#refused + 1] = name
+            else
+                -- A slider written earlier in this run may already have moved it; the value
+                -- from before this change is the one to go back to.
+                local original = snapshot[name] ~= nil and snapshot[name] or before
+                if revert[name] == nil then revert[name] = original end
+                changed = changed + 1
+                if keepBackup and db.cvarBackup[name] == nil then db.cvarBackup[name] = original end
+                if result == "clamped" then clamped[#clamped + 1] = name end
+                local row = G.AllowedRow(name)
+                if row and row.restart then restart[#restart + 1] = row.title end
+            end
+        end
+    end
+    if changed > 0 then
+        for name, before in pairs(snapshot) do
+            if not same(G.Current(name), before) then
+                if revert[name] == nil then revert[name] = before end
+                if keepBackup and db.cvarBackup[name] == nil then db.cvarBackup[name] = before end
             end
         end
     end
     table.sort(refused)
+    table.sort(clamped)
     if changed > 0 then
         db.pendingRevert = revert
         G.deadline = G.keepSeconds
         if NS.App then NS.App:GraphicsConfirm() end
     end
-    return changed > 0 or #refused == 0, changed, refused
+    return changed > 0 or #refused == 0, changed, refused, clamped, restart
 end
 
 function G.Apply(db)
     local values = G.pending
-    local ok, changed, refused = commit(db, values, true)
-    if ok then G.pending = {} end
-    return ok, changed, refused
+    local ok, changed, refused, clamped, restart = commit(db, values, true)
+    if ok then G.pending, G.pendingFrom, G.stagedPreset = {}, {}, nil end
+    return ok, changed, refused, clamped, restart
 end
 
 function G.Keep(db)
@@ -135,12 +231,23 @@ function G.Keep(db)
     if NS.App then NS.App:GraphicsConfirmDone() end
 end
 
+-- Puts back the values from before the unanswered change, in the same safe order.
+-- Anything the client does not take back stays listed for the next attempt.
 function G.Revert(db)
     local values = db.pendingRevert
+    local left = {}
+    for _, name in ipairs(ordered(values)) do
+        local value = values[name]
+        if not same(G.Current(name), value) and write(name, value) == "refused" then left[name] = value end
+    end
     db.pendingRevert = {}
     G.deadline = nil
-    for name, value in pairs(values) do write(name, value) end
+    G.revertFailed = next(left) and left or nil
+    if G.revertFailed then
+        A.Print(NS.Text("Diese Grafikwerte konnten nicht zurückgesetzt werden: ", "These graphics values could not be restored: ") .. table.concat(ordered(left), ", "))
+    end
     if NS.App then NS.App:GraphicsConfirmDone() end
+    return G.revertFailed == nil
 end
 
 function G.HasUnanswered(db) return next(db.pendingRevert) ~= nil end
@@ -179,5 +286,6 @@ function G.ResetOne(db, name)
     local default = G.Default(name)
     if default == nil or not G.AllowedRow(name) then return false end
     G.pending[name] = nil
+    G.pendingFrom[name] = nil
     return commit(db, {[name] = default}, true)
 end

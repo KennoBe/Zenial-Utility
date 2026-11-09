@@ -93,22 +93,53 @@ function U.fixed.graphics(v, page)
     local intro = CreateFrame("Frame", nil, page)
     intro:SetPoint("TOPLEFT", 0, 0)
     intro:SetPoint("TOPRIGHT", 0, 0)
-    intro:SetHeight(76)
+    intro:SetHeight(130)
     local text = T.Text(intro, tr("Vorlagen und Regler merken Änderungen nur vor. Erst „Änderungen übernehmen“ wendet sie an; danach hast du 30 Sekunden, um sie zu behalten, sonst kehrt alles zurück.",
         "Presets and sliders only stage changes. “Apply changes” applies them; then you have 30 seconds to keep them, otherwise everything reverts."), "GameFontHighlightSmall", "muted")
     text:SetPoint("TOPLEFT", 0, 0)
     text:SetPoint("RIGHT", intro, "RIGHT", 0, 0)
-    local x = 0
+    -- Three buttons share the width of the page, so none of them reaches past the edge.
+    local buttons = {}
     for _, preset in ipairs(NS.GraphicsPresets) do
-        local width = preset.key == "hdr" and 150 or 260
-        local button = T.Button(intro, preset.title, width, 28, function()
+        local button = T.Button(intro, preset.title, 150, 28, function()
             G.StagePreset(preset.key)
             U.Refresh()
         end, "secondary")
-        button:SetPoint("TOPLEFT", x, -34)
-        W.Tooltip(button, preset.title, preset.hint)
-        x = x + width + 8
+        local tip = preset.hint
+        if preset.summary then tip = tip .. "\n\n" .. table.concat(preset.summary, "\n") end
+        W.Tooltip(button, preset.title, tip)
+        buttons[#buttons + 1] = button
     end
+    local function placeButtons()
+        local width = intro:GetWidth() or 0
+        if width < 100 then width = 560 end
+        local each = math.floor((width - 8 * (#buttons - 1)) / #buttons)
+        for index, button in ipairs(buttons) do
+            button:SetWidth(each)
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", (index - 1) * (each + 8), -34)
+        end
+    end
+    placeButtons()
+    intro:HookScript("OnSizeChanged", placeButtons)
+    -- What the staged preset would do on this client. Describes, never promises an FPS number.
+    local plan = T.Text(intro, "", "GameFontHighlightSmall", "textSoft")
+    plan:SetPoint("TOPLEFT", 0, -70)
+    plan:SetPoint("RIGHT", intro, "RIGHT", 0, 0)
+    plan:SetJustifyV("TOP")
+    plan:SetHeight(56)
+    if plan.SetMaxLines then plan:SetMaxLines(4) end
+    v:AddUpdate(function()
+        local key = G.stagedPreset
+        local preset = key and G.Preset(key)
+        if not preset then plan:SetText(""); return end
+        local info = G.PresetPlan(key)
+        local parts = {string.format(tr("„%s“: %d Änderungen vorgemerkt", "“%s”: %d changes staged"), preset.title, info.changes)}
+        if preset.summary then parts[#parts + 1] = table.concat(preset.summary, "  ·  ") end
+        if #info.missing > 0 then parts[#parts + 1] = string.format(tr("Nicht verfügbar: %s", "Not available: %s"), table.concat(info.missing, ", ")) end
+        if #info.restart > 0 then parts[#parts + 1] = string.format(tr("Braucht einen Neustart: %s", "Needs a restart: %s"), table.concat(info.restart, ", ")) end
+        plan:SetText(table.concat(parts, "\n"))
+    end)
 
     local footer = CreateFrame("Frame", nil, page)
     footer:SetPoint("BOTTOMLEFT", 0, 0)
@@ -116,13 +147,15 @@ function U.fixed.graphics(v, page)
     -- Embedded pages are wide enough for one row, which leaves more room for the list.
     footer:SetHeight(v.embedded and 34 or 72)
     v.graphicsApply = T.Button(footer, tr("Änderungen übernehmen", "Apply changes"), 190, 28, function()
-        local ok, changed, refused = G.Apply(db())
+        local ok, changed, refused, clamped, restart = G.Apply(db())
         if ok == false and changed == "combat" then
             v:SetMessage(tr("Im Kampf nicht möglich. Deine Auswahl bleibt vorgemerkt.", "Not possible in combat. Your selection stays staged."))
-        elseif refused and #refused > 0 then
-            v:SetMessage(string.format(tr("Das Spiel hat abgelehnt: %s", "The game refused: %s"), table.concat(refused, ", ")))
         else
-            v:SetMessage("")
+            local notes = {}
+            if refused and #refused > 0 then notes[#notes + 1] = string.format(tr("Das Spiel hat abgelehnt: %s", "The game refused: %s"), table.concat(refused, ", ")) end
+            if clamped and #clamped > 0 then notes[#notes + 1] = string.format(tr("Vom Spiel angepasst: %s", "Adjusted by the game: %s"), table.concat(clamped, ", ")) end
+            if restart and #restart > 0 then notes[#notes + 1] = string.format(tr("Wirkt erst nach einem Neustart: %s", "Takes effect after a restart: %s"), table.concat(restart, ", ")) end
+            v:SetMessage(table.concat(notes, "  "))
         end
         U.Refresh()
     end, "primary")

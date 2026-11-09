@@ -17,7 +17,8 @@ local function sanitize(raw, current)
     combined = L.Sanitize(combined)
     local out = {}
     for _, key in ipairs(KEYS) do out[key] = combined[key] end
-    out.graphicsChoice = type(raw) == "table" and raw.graphicsChoice == "beauty" and "beauty" or "keep"
+    local choice = type(raw) == "table" and raw.graphicsChoice
+    out.graphicsChoice = (choice == "beauty" or choice == "fps") and choice or "keep"
     return out
 end
 
@@ -37,11 +38,13 @@ function S.Initialize(fresh)
         v:Label(p, tr("/zutil config öffnet diesen Assistenten erneut.", "/zutil config reopens this wizard."), 0, -60, 552, 40, "GameFontHighlightSmall", "muted")
     end)
     page("Grafik", "Graphics",
-        "Dichtes Gras, weite Sicht und scharfe Schatten über Einstellungen, die das Spielmenü nicht anbietet.",
-        "Dense grass, long view distance and sharp shadows through settings the game menu does not offer.", 170, function(v, p)
-        v:Dropdown(p, "graphicsChoice", 0, 0, 400, {{"keep", tr("Grafik unverändert lassen", "Leave graphics unchanged")}, {"beauty", tr("Vorlage „Schöne Weitsicht“ verwenden", "Use the “Beautiful views” preset")}})
-        v:Label(p, tr("Braucht einen kräftigen Rechner. Deine Werte werden gesichert; ohne Bestätigung binnen 30 Sekunden kehrt alles zurück.",
-            "Needs a capable computer. Your values are saved; without confirmation within 30 seconds everything reverts."), 0, -50, 552, 70, "GameFontHighlightSmall", "muted")
+        "Eine Grafikvorlage über Einstellungen, die das Spielmenü nicht anbietet.",
+        "A graphics preset through settings the game menu does not offer.", 170, function(v, p)
+        v:Dropdown(p, "graphicsChoice", 0, 0, 400, {{"keep", tr("Grafik unverändert lassen", "Leave graphics unchanged")},
+            {"beauty", tr("Vorlage „Schöne Weitsicht“ verwenden", "Use the “Beautiful views” preset")},
+            {"fps", tr("Vorlage „Mehr FPS – gute Optik“ verwenden", "Use the “More FPS – good looks” preset")}})
+        v:Label(p, tr("Schöne Weitsicht braucht einen kräftigen Rechner, Mehr FPS senkt teure Effekte. Deine Werte werden gesichert; ohne Bestätigung binnen 30 Sekunden kehrt alles zurück.",
+            "Beautiful views needs a capable computer, More FPS lowers expensive effects. Your values are saved; without confirmation within 30 seconds everything reverts."), 0, -50, 552, 70, "GameFontHighlightSmall", "muted")
     end)
     page("Karte", "Map",
         "Aufdecken ändert nur die Anzeige. Erkundung, Erfahrung und Erfolge bleiben unberührt.",
@@ -90,7 +93,8 @@ function S.Initialize(fresh)
             local function on(value) return value and tr("An", "On") or tr("Aus", "Off") end
             local reveal = v.draft.mapReveal
             summary:SetText(table.concat({
-                tr("Grafik: ", "Graphics: ") .. (v.draft.graphicsChoice == "beauty" and tr("Schöne Weitsicht", "Beautiful views") or tr("unverändert", "unchanged")),
+                tr("Grafik: ", "Graphics: ") .. ((v.draft.graphicsChoice == "beauty" and tr("Schöne Weitsicht", "Beautiful views"))
+                    or (v.draft.graphicsChoice == "fps" and tr("Mehr FPS – gute Optik", "More FPS – good looks")) or tr("unverändert", "unchanged")),
                 tr("Karte aufdecken: ", "Reveal map: ") .. ((reveal == "off" and tr("Aus", "Off")) or (reveal == "soft" and tr("Halbtransparent", "Translucent")) or tr("Voll", "Full")),
                 tr("Müll verkaufen / Reparieren: ", "Sell junk / repair: ") .. on(v.draft.vendorJunk) .. " / " .. on(v.draft.vendorRepair),
                 tr("Quests annehmen / abgeben: ", "Accept / turn in quests: ") .. on(v.draft.questAccept) .. " / " .. on(v.draft.questTurnIn),
@@ -105,8 +109,8 @@ function S.Initialize(fresh)
         apply = function(draft)
             for _, key in ipairs(KEYS) do NS.App.db[key] = draft[key] end
             NS.App:Changed()
-            if draft.graphicsChoice == "beauty" then
-                NS.Graphics.StagePreset("beauty")
+            if draft.graphicsChoice == "beauty" or draft.graphicsChoice == "fps" then
+                NS.Graphics.StagePreset(draft.graphicsChoice)
                 NS.Graphics.Apply(NS.App.db)
                 U.Refresh()
             end

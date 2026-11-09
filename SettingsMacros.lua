@@ -18,9 +18,35 @@ local function missingText(missing)
 end
 
 function U.fixed.macros(v, page)
-    local state = {class = A.PlayerClass(), cat = "ALL", text = "", knownOnly = false, offset = 0, scope = "account"}
+    local state = {class = A.PlayerClass(), cat = "ALL", text = "", knownOnly = false, offset = 0, scope = "account", tab = "browse"}
     v.macroState = state
     if not M.Classes[state.class] then state.class = "ALL" end
+
+    -- Two views: the collection and carrying character macros over to alts.
+    local browse = CreateFrame("Frame", nil, page)
+    browse:SetPoint("TOPLEFT", 0, -34)
+    browse:SetPoint("BOTTOMRIGHT", 0, 0)
+    local transfer = CreateFrame("Frame", nil, page)
+    transfer:SetPoint("TOPLEFT", 0, -34)
+    transfer:SetPoint("BOTTOMRIGHT", 0, 0)
+    transfer:Hide()
+    v.macroTabs = {}
+    local function showTab(tab)
+        state.tab = tab
+        browse:SetShown(tab == "browse")
+        transfer:SetShown(tab == "transfer")
+        for key, button in pairs(v.macroTabs) do T.SetSelected(button, key == tab) end
+        v:SetMessage("")
+        if tab == "transfer" then v:RenderMacroSets() else v:RenderMacros() end
+    end
+    v.macroTabs.browse = T.Button(page, tr("Makrosammlung", "Macro collection"), 190, 26, function() showTab("browse") end, "secondary")
+    v.macroTabs.browse:SetPoint("TOPLEFT", 0, 0)
+    v.macroTabs.transfer = T.Button(page, tr("Charakter-Makros übertragen", "Carry over character macros"), 250, 26, function() showTab("transfer") end, "secondary")
+    v.macroTabs.transfer:SetPoint("TOPLEFT", 196, 0)
+    T.SetSelected(v.macroTabs.browse, true)
+    v.ShowMacroTab = function(_, tab) showTab(tab) end
+    local outer = page
+    page = browse
 
     -- Filters
     local classes = {{"ALL", tr("Alle Klassen", "All classes")}}
@@ -31,7 +57,7 @@ function U.fixed.macros(v, page)
     v:Dropdown(page, "macroCategory", 156, 0, 170, categories, function() return state.cat end, function(value) state.cat = value; state.offset = 0 end)
     local search = W.Edit(page, 334, 0, 190, function(value) state.text = value; state.offset = 0; v:RenderMacros() end)
     v.macroSearch = search
-    local hint = T.Text(search, tr("Suchen", "Search"), "GameFontHighlightSmall", "muted")
+    local hint = T.Text(search, tr("Makro suchen …", "Search macros …"), "GameFontHighlightSmall", "muted")
     hint:SetPoint("LEFT", 8, 0)
     search:HookScript("OnTextChanged", function(self) hint:SetShown(self:GetText() == "") end)
 
@@ -140,18 +166,19 @@ function U.fixed.macros(v, page)
     local footer = CreateFrame("Frame", nil, detail)
     footer:SetPoint("BOTTOMLEFT", 14, 10)
     footer:SetPoint("BOTTOMRIGHT", -14, 10)
-    footer:SetHeight(32)
-    v:Dropdown(footer, "macroScope", 0, 0, 150, {{"account", tr("Für den Account", "For the account")}, {"character", tr("Für diesen Charakter", "For this character")}},
+    footer:SetHeight(62)
+    v:Dropdown(footer, "macroScope", 0, 0, 200, {{"account", tr("Für alle Charaktere", "For all characters")}, {"character", tr("Nur dieser Charakter", "This character only")}},
         function() return state.scope end, function(value) state.scope = value; state.armed = nil end)
-    v.macroImport = T.Button(footer, tr("Importieren", "Import"), 110, 28, function() v:ImportMacro() end, "primary")
-    v.macroImport:SetPoint("TOPLEFT", 156, 0)
-    v.macroPickup = T.Button(footer, tr("Aufnehmen", "Pick up"), 90, 28, function()
+    v.macroImport = T.Button(footer, tr("Makro erstellen", "Create macro"), 170, 28, function() v:ImportMacro() end, "primary")
+    v.macroImport:SetPoint("TOPLEFT", 0, -32)
+    W.Tooltip(v.macroImport, tr("Makro erstellen", "Create macro"), tr("Legt das Makro im Makrofenster des Spiels an. Gibt es den Namen schon, fragt der Button einmal nach, bevor er ersetzt.", "Creates the macro in the game's macro window. If the name exists, the button asks once before replacing it."))
+    v.macroPickup = T.Button(footer, tr("Auf Leiste ziehen", "Drag to bar"), 160, 28, function()
         local name = state.selected and M.ShortName(state.selected)
         local index = name and A.Call(GetMacroIndexByName, name)
         if type(index) == "number" and index > 0 and not A.Combat() then A.Call(PickupMacro, index) end
     end, "secondary")
-    v.macroPickup:SetPoint("TOPLEFT", 270, 0)
-    W.Tooltip(v.macroPickup, tr("Aufnehmen", "Pick up"), tr("Legt das Makro auf den Mauszeiger, damit du es auf eine Aktionsleiste ziehen kannst.", "Puts the macro on the cursor so you can drop it on an action bar."))
+    v.macroPickup:SetPoint("TOPLEFT", 176, -32)
+    W.Tooltip(v.macroPickup, tr("Auf Leiste ziehen", "Drag to bar"), tr("Legt das Makro auf den Mauszeiger, damit du es auf eine Aktionsleiste ziehen kannst.", "Puts the macro on the cursor so you can drop it on an action bar."))
 
     function v:ImportMacro()
         local entry = state.selected
@@ -199,7 +226,7 @@ function U.fixed.macros(v, page)
         local existing = expanded and M.Existing(M.ShortName(entry), expanded)
         self.macroPickup:SetEnabled(existing ~= nil and not A.Combat())
         self.macroImport:SetEnabled(not A.Combat())
-        self.macroImport:SetText(state.armed == entry.id and tr("Ersetzen", "Replace") or tr("Importieren", "Import"))
+        self.macroImport:SetText(state.armed == entry.id and tr("Vorhandenes ersetzen", "Replace existing") or tr("Makro erstellen", "Create macro"))
     end
 
     function v:RenderMacros()
@@ -231,5 +258,58 @@ function U.fixed.macros(v, page)
     end
 
     list:SetScript("OnSizeChanged", function() if v.index == "macros" then v:RenderMacros() end end)
-    v:AddUpdate(function() v:RenderMacros() end)
+
+    -- Carry over: save the macros of this character, import them on another one.
+    local info = T.Text(transfer, tr("1. Auf dem Charakter mit den Makros „Makros dieses Charakters sichern“ klicken.\n2. Auf dem anderen Charakter hier die gesicherte Liste übernehmen. Makros mit vorhandenem Namen bleiben unberührt.",
+        "1. On the character that has the macros, click “Save this character's macros”.\n2. On the other character, import the saved list here. Macros with an existing name stay untouched."), "GameFontHighlight", "textSoft")
+    info:SetPoint("TOPLEFT", 0, -6)
+    info:SetWidth(600)
+    local save = T.Button(transfer, tr("Makros dieses Charakters sichern", "Save this character's macros"), 300, 28, function()
+        local ok, count = M.SaveCharacterSet(db())
+        v:SetMessage(ok and string.format(tr("%d Makros gesichert.", "%d macros saved."), count) or tr("Im Kampf nicht möglich.", "Not possible in combat."))
+        v:RenderMacroSets()
+    end, "primary")
+    save:SetPoint("TOPLEFT", 0, -64)
+    local setsTitle = T.Text(transfer, tr("Gesicherte Charaktere", "Saved characters"), "GameFontNormal", "gold")
+    setsTitle:SetPoint("TOPLEFT", 0, -108)
+    local none = T.Text(transfer, tr("Noch nichts gesichert.", "Nothing saved yet."), "GameFontHighlightSmall", "muted")
+    none:SetPoint("TOPLEFT", 0, -132)
+    v.setRows = {}
+    for index = 1, 10 do
+        local row = CreateFrame("Frame", nil, transfer)
+        row:SetSize(600, 30)
+        row:SetPoint("TOPLEFT", 0, -130 - (index - 1) * 32)
+        row.label = T.Text(row, "", "GameFontHighlight", "text")
+        row.label:SetPoint("LEFT", 0, 0)
+        row.label:SetWidth(380)
+        row.button = T.Button(row, tr("Auf diesen Charakter übernehmen", "Import to this character"), 240, 26, function(self)
+            local scope = self:GetParent().scope
+            local ok, created, skipped = M.LoadCharacterSet(db(), scope)
+            v:SetMessage(ok and string.format(tr("%d Makros angelegt, %d übersprungen.", "%d macros created, %d skipped."), created, skipped) or tr("Im Kampf nicht möglich.", "Not possible in combat."))
+        end, "secondary")
+        row.button:SetPoint("RIGHT", 0, 0)
+        row:Hide()
+        v.setRows[index] = row
+    end
+    function v:RenderMacroSets()
+        local scopes = {}
+        for scope in pairs(db().macroSets) do scopes[#scopes + 1] = scope end
+        table.sort(scopes)
+        local own = A.Scope()
+        none:SetShown(#scopes == 0)
+        for index, row in ipairs(self.setRows) do
+            local scope = scopes[index]
+            row.scope = scope
+            if scope then
+                row.label:SetText(scope .. "  ·  " .. string.format(tr("%d Makros", "%d macros"), #db().macroSets[scope]) .. (scope == own and ("  ·  " .. tr("dieser Charakter", "this character")) or ""))
+                row.button:SetEnabled(scope ~= own and not A.Combat())
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+        save:SetEnabled(not A.Combat())
+    end
+    v:AddUpdate(function() if state.tab == "transfer" then v:RenderMacroSets() else v:RenderMacros() end end)
+    page = outer
 end

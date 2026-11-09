@@ -35,7 +35,7 @@ local function buildRow(v, content, row, y)
     local value = T.Text(frame, "", "GameFontHighlightSmall", "muted")
     value:SetPoint("TOPLEFT", 4, -38)
     value:SetWidth(280)
-    local reset = T.Button(frame, tr("Standard", "Default"), 78, 24, function()
+    local reset = T.Button(frame, tr("Spielstandard", "Game default"), 110, 24, function()
         local ok, changed = G.ResetOne(db(), row.name)
         if not ok then v:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")) end
         if changed then v:SetMessage("") end
@@ -49,7 +49,7 @@ local function buildRow(v, content, row, y)
     if row.kind == "toggle" then
         control = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
         control:SetSize(24, 24)
-        control:SetPoint("TOPRIGHT", -92, -8)
+        control:SetPoint("TOPRIGHT", -124, -8)
         T.StyleCheckbox(control)
         control:SetScript("OnClick", function(self)
             G.Stage(row.name, self:GetChecked() and 1 or 0)
@@ -58,7 +58,7 @@ local function buildRow(v, content, row, y)
     else
         control = CreateFrame("Slider", nil, frame, "OptionsSliderTemplate")
         control:SetSize(170, 16)
-        control:SetPoint("TOPRIGHT", -92, -12)
+        control:SetPoint("TOPRIGHT", -124, -12)
         control:SetMinMaxValues(row.minimum, row.maximum)
         control:SetValueStep(row.step)
         if control.SetObeyStepOnDrag then control:SetObeyStepOnDrag(true) end
@@ -94,8 +94,8 @@ function U.fixed.graphics(v, page)
     intro:SetPoint("TOPLEFT", 0, 0)
     intro:SetPoint("TOPRIGHT", 0, 0)
     intro:SetHeight(76)
-    local text = T.Text(intro, tr("Vorlagen ändern nur die aufgeführten Einstellungen und werden erst mit „Übernehmen“ wirksam. Änderungen müssen danach innerhalb von 30 Sekunden bestätigt werden.",
-        "Presets only change the listed settings and take effect on Apply. Changes then have to be confirmed within 30 seconds."), "GameFontHighlightSmall", "muted")
+    local text = T.Text(intro, tr("Vorlagen und Regler merken Änderungen nur vor. Erst „Änderungen übernehmen“ wendet sie an; danach hast du 30 Sekunden, um sie zu behalten, sonst kehrt alles zurück.",
+        "Presets and sliders only stage changes. “Apply changes” applies them; then you have 30 seconds to keep them, otherwise everything reverts."), "GameFontHighlightSmall", "muted")
     text:SetPoint("TOPLEFT", 0, 0)
     text:SetPoint("RIGHT", intro, "RIGHT", 0, 0)
     local x = 0
@@ -115,7 +115,7 @@ function U.fixed.graphics(v, page)
     footer:SetPoint("BOTTOMRIGHT", 0, 0)
     -- Embedded pages are wide enough for one row, which leaves more room for the list.
     footer:SetHeight(v.embedded and 34 or 72)
-    v.graphicsApply = T.Button(footer, tr("Übernehmen", "Apply"), 130, 28, function()
+    v.graphicsApply = T.Button(footer, tr("Änderungen übernehmen", "Apply changes"), 190, 28, function()
         local ok, changed, refused = G.Apply(db())
         if ok == false and changed == "combat" then
             v:SetMessage(tr("Im Kampf nicht möglich. Deine Auswahl bleibt vorgemerkt.", "Not possible in combat. Your selection stays staged."))
@@ -127,11 +127,11 @@ function U.fixed.graphics(v, page)
         U.Refresh()
     end, "primary")
     v.graphicsApply:SetPoint("TOPLEFT", 0, -6)
-    v.graphicsDiscard = T.Button(footer, tr("Verwerfen", "Discard"), 110, 28, function()
+    v.graphicsDiscard = T.Button(footer, tr("Änderungen verwerfen", "Discard changes"), 170, 28, function()
         G.Discard()
         U.Refresh()
     end, "secondary")
-    v.graphicsDiscard:SetPoint("TOPLEFT", 138, -6)
+    v.graphicsDiscard:SetPoint("TOPLEFT", 198, -6)
     local pending = T.Text(footer, "", "GameFontHighlightSmall", "muted")
     pending:SetPoint("LEFT", v.graphicsDiscard, "RIGHT", 10, 0)
     v.graphicsBackup = T.Button(footer, tr("Meine früheren Werte", "My previous values"), 190, 26, function()
@@ -139,14 +139,19 @@ function U.fixed.graphics(v, page)
         if not ok then v:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")) end
         U.Refresh()
     end, "secondary")
-    v.graphicsBackup:SetPoint("TOPLEFT", v.embedded and 256 or 0, v.embedded and -6 or -38)
+    v.graphicsBackup:SetPoint("TOPLEFT", v.embedded and 376 or 0, v.embedded and -6 or -38)
     W.Tooltip(v.graphicsBackup, tr("Meine früheren Werte", "My previous values"), tr("Stellt alles her, was du vor der ersten Änderung durch ZENIAL Utility eingestellt hattest.", "Restores everything you had set before ZENIAL Utility first changed it."))
-    v.graphicsDefaults = T.Button(footer, tr("Alles auf Spielstandard", "All to game default"), 190, 26, function()
-        local ok = G.RestoreDefaults(db())
-        if not ok then v:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")) end
-        U.Refresh()
+    v.graphicsDefaults = T.Button(footer, tr("Alles auf Spielstandard …", "All to game default …"), 190, 26, function()
+        NS.SettingsControls.Confirm(v, tr("Alle Grafikwerte auf Spielstandard?", "All graphics values to game default?"),
+            tr("Jede hier aufgeführte Einstellung kehrt zum Standardwert des Spiels zurück. „Meine früheren Werte“ bleibt danach verfügbar.",
+                "Every setting listed here returns to the game's default value. “My previous values” stays available afterwards."),
+            tr("Auf Spielstandard setzen", "Set to game default"), function()
+                local ok = G.RestoreDefaults(db())
+                if not ok then v:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")) end
+                U.Refresh()
+            end, "danger")
     end, "danger")
-    v.graphicsDefaults:SetPoint("TOPLEFT", v.embedded and 454 or 198, v.embedded and -6 or -38)
+    v.graphicsDefaults:SetPoint("TOPLEFT", v.embedded and 574 or 198, v.embedded and -6 or -38)
     if v.embedded then
         pending:ClearAllPoints()
         pending:SetPoint("LEFT", v.graphicsDefaults, "RIGHT", 10, 0)

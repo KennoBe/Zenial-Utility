@@ -131,8 +131,65 @@ local CHOICES = {
 }
 -- Account data that belongs to no profile and is kept as it is.
 local EXTRA = {"setup", "cvarBackup", "pendingRevert", "imported", "macroInputs", "macroSets", "played", "rollWindow",
-    "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "layoutLibrary"}
-L.DataVersion = 2
+    "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "layoutLibrary",
+    "settingsWindow"}
+L.DataVersion = 3
+
+-- Up to 0.3 every topic had a hidden master switch (only on the overview cards). Its options stayed
+-- ticked on their pages while the topic was off, so the menu showed features as on that did not run.
+-- Since 0.4 every option stands for itself: a topic that was switched off turns its options off
+-- (and the master back on), so nothing that was inactive starts running after the update.
+-- The master keys stay in the defaults because the feature modules still read them.
+L.Masters = {
+    modMap = {mapReveal = "off", waypoints = false, mapLevels = false},
+    modComfort = {vendorJunk = false, vendorRepair = false, vendorGuildRepair = false, questAccept = false,
+        questTurnIn = false, questRewardValue = false, questZoneTrack = false},
+    modWarnings = {warnDurability = false, warnBags = false, warnAmmo = false, warnPoison = false, warnReagents = false},
+    modExtras = {screenshotLevel = false, screenshotBoss = false, tooltipIDs = false, rollTracker = false},
+    modInventory = {bagMove = false, xpText = false, xpPercent = false, mailAlts = false, destroyGray = false},
+    modTooltip = {ttUnit = false, ttGathering = false, ttItemLevel = false, ttAnchor = "default", ttHealthBar = "default"},
+    modQoL = {fastLoot = false, lootConfirmSolo = false, lootGreed = false, lootFeed = false, skipGossip = false,
+        declineDuels = false, bgRelease = false, errorFilter = false, rankCheck = false,
+        hideBags = "show", hideMicro = "show", hideClock = "show", hideCalendar = "show", hideTracking = "show", hideZoneText = "show"},
+}
+
+-- Presets only ever touch the listed keys. Nothing else in the settings changes.
+L.Presets = {
+    -- Helpers most players want; all of them only show something or save clicks.
+    comfort = {fastLoot = true, lootFeed = true, vendorJunk = true, vendorRepair = true, questRewardValue = true,
+        mapLevels = true, warnDurability = true, warnBags = true, mailAlts = true, xpText = true},
+    -- Everything that acts for the player: sells, repairs, buys, accepts, answers NPCs or rolls.
+    manual = {vendorJunk = false, vendorRepair = false, vendorGuildRepair = false, questAccept = false, questTurnIn = false,
+        skipGossip = false, declineDuels = false, bgRelease = false, lootGreed = false, lootConfirmSolo = false, destroyGray = false},
+}
+
+-- The keys a preset would change, in a stable order.
+function L.PresetChanges(db, name)
+    local out = {}
+    for key, value in pairs(L.Presets[name] or {}) do
+        if db[key] ~= value then out[#out + 1] = key end
+    end
+    table.sort(out)
+    return out
+end
+
+function L.ApplyPreset(db, name)
+    local changed = L.PresetChanges(db, name)
+    for _, key in ipairs(changed) do db[key] = L.Presets[name][key] end
+    return changed
+end
+
+-- Back to the shipped values for the given keys only.
+function L.ResetKeys(db, keys)
+    local changed = 0
+    for _, key in ipairs(keys) do
+        if L.Defaults[key] ~= nil and db[key] ~= L.Defaults[key] then
+            db[key] = L.Defaults[key]
+            changed = changed + 1
+        end
+    end
+    return changed
+end
 
 function L.Copy(value)
     if type(value) ~= "table" then return value end
@@ -165,6 +222,12 @@ function L.Sanitize(raw)
         out[key] = type(raw[key]) == "table" and raw[key] or {}
     end
     for key, repair in pairs(L.Structured) do out[key] = repair(raw[key]) end
+    for master, children in pairs(L.Masters) do
+        if raw[master] == false then
+            for key, value in pairs(children) do out[key] = value end
+        end
+        out[master] = true
+    end
     out.dataVersion = L.DataVersion
     return out
 end

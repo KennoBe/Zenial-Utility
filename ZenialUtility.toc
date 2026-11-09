@@ -39,6 +39,8 @@ Widgets.lua
 WarnBars.lua
 RollWindow.lua
 ConfigWizard.lua
+SettingsSearch.lua
+SettingsControls.lua
 SettingsUI.lua
 SettingsMacros.lua
 SettingsGraphics.lua

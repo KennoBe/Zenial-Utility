@@ -86,7 +86,11 @@ function C.PlayerDead()
 end
 
 ----------------------------------------------------------------------
--- Error filter. Only the chosen kinds of red messages; everything else passes through untouched.
+-- Error filter. Hides only the chosen kinds of red messages (text and, with it, their sound). While it
+-- is needed the addon takes UI_ERROR_MESSAGE over from UIErrorsFrame and hands every message that is
+-- not hidden to the frame's own OnEvent script, so the game's (or another addon's) handling, sound
+-- included, runs unchanged. No Blizzard method or script is replaced or hooked. The event goes back
+-- to the game as soon as the filter is off or no kind is chosen.
 ----------------------------------------------------------------------
 local ERROR_GROUPS = {
     errResource = {"LE_GAME_ERR_OUT_OF_MANA", "LE_GAME_ERR_OUT_OF_ENERGY", "LE_GAME_ERR_OUT_OF_RAGE", "LE_GAME_ERR_OUT_OF_FOCUS", "LE_GAME_ERR_OUT_OF_POWER_DISPLAY"},
@@ -94,10 +98,11 @@ local ERROR_GROUPS = {
     errRange = {"LE_GAME_ERR_OUT_OF_RANGE", "LE_GAME_ERR_SPELL_OUT_OF_RANGE", "LE_GAME_ERR_USE_TOO_FAR", "LE_GAME_ERR_AUTOFOLLOW_TOO_FAR", "LE_GAME_ERR_BADATTACKPOS"},
     errTarget = {"LE_GAME_ERR_GENERIC_NO_TARGET", "LE_GAME_ERR_INVALID_ATTACK_TARGET", "LE_GAME_ERR_NO_ATTACK_TARGET"},
 }
+local ERROR_EVENT = "UI_ERROR_MESSAGE"
 
+-- Fail-open: unknown ids, secret or non-number types and every kind that was not chosen are shown.
 function C.IsFiltered(messageType)
     if not on("errorFilter") or not A.Public(messageType) or type(messageType) ~= "number" then return false end
-    if db().errAll then return true end
     for key, names in pairs(ERROR_GROUPS) do
         if db()[key] then
             for _, name in ipairs(names) do
@@ -108,48 +113,78 @@ function C.IsFiltered(messageType)
     return false
 end
 
--- The client's TryDisplayMessage shows the text and then plays the sound of the same message type
--- (GetGameMessageInfo: voice line, otherwise sound kit). For a filtered type, the two parts are
--- rebuilt separately with the same public calls, so text and sound can be switched independently.
-local function playErrorSound(messageType)
-    local _, soundKitID, voiceID = A.Call(_G.GetGameMessageInfo, messageType)
-    local sound = _G.C_Sound
-    if voiceID then
-        if sound and type(sound.PlayVocalErrorSound) == "function" then A.Call(sound.PlayVocalErrorSound, voiceID)
-        else A.Call(_G.PlayVocalErrorSoundID, voiceID) end
-    elseif soundKitID then
-        A.Call(_G.PlaySound, soundKitID)
+local function anyKindChosen()
+    for key in pairs(ERROR_GROUPS) do
+        if db()[key] then return true end
     end
+    return false
 end
 
-local function showFiltered(frame, messageType, message, r, g, b)
-    local data = db()
-    local text, sound = data.errShowText == true, data.errPlaySound == true
-    if text and sound then return frame:TryDisplayMessage(messageType, message, r, g, b) end
-    if not text and not sound then return end
-    if type(frame.GetMessagesSuppressed) == "function" and frame:GetMessagesSuppressed() then return end
-    if type(frame.ShouldDisplayMessageType) == "function" and not frame:ShouldDisplayMessageType(messageType, message) then return end
-    if text then frame:AddMessage(message, r, g, b, 1.0, messageType) end
-    if sound then playErrorSound(messageType) end
+local function frameHandler(frame)
+    if type(frame.GetScript) ~= "function" then return nil end
+    local ok, script = pcall(frame.GetScript, frame, "OnEvent")
+    return ok and type(script) == "function" and script or nil
 end
 
-local errorListener = A.Listener({UI_ERROR_MESSAGE = function(messageType, message)
+local errorListener = A.Listener({[ERROR_EVENT] = function(messageType, message)
     local frame = _G.UIErrorsFrame
     if not frame then return end
-    local color = _G.RED_FONT_COLOR
+    -- A failing check of our own must never cost a message.
+    local ok, hidden = pcall(C.IsFiltered, messageType)
+    if ok and hidden then return end
+    -- Somebody gave the event back to the frame: it shows the message itself, so forwarding would double it.
+    if type(frame.IsEventRegistered) == "function" then
+        local checked, registered = pcall(frame.IsEventRegistered, frame, ERROR_EVENT)
+        if checked and registered then return end
+    end
+    local script = frameHandler(frame)
+    if script then return script(frame, ERROR_EVENT, messageType, message) end
     local r, g, b = 1, .1, .1
+    local color = _G.RED_FONT_COLOR
     if color and color.GetRGB then r, g, b = color:GetRGB() end
-    if C.IsFiltered(messageType) then return showFiltered(frame, messageType, message, r, g, b) end
-    frame:TryDisplayMessage(messageType, message, r, g, b)
+    if type(frame.TryDisplayMessage) == "function" then frame:TryDisplayMessage(messageType, message, r, g, b) end
 end})
 
 local function setErrorFilter(active)
     local frame = _G.UIErrorsFrame
-    if not frame or type(frame.TryDisplayMessage) ~= "function" or not frame.UnregisterEvent then return end
+    if not frame or type(frame.UnregisterEvent) ~= "function" or type(frame.RegisterEvent) ~= "function" then return end
+    -- Take the event over only when the messages can be passed on; otherwise leave the game alone.
+    if active and not frameHandler(frame) and type(frame.TryDisplayMessage) ~= "function" then return end
     if active == (C.errorActive == true) then return end
     C.errorActive = active
     errorListener:Set(active)
-    if active then frame:UnregisterEvent("UI_ERROR_MESSAGE") else frame:RegisterEvent("UI_ERROR_MESSAGE") end
+    if active then frame:UnregisterEvent(ERROR_EVENT) else frame:RegisterEvent(ERROR_EVENT) end
+end
+
+-- Error speech is the game's own setting; nothing is stored here. The sound of a hidden message
+-- goes with it, the speech switch is separate.
+local SPEECH_CVAR = "Sound_EnableErrorSpeech"
+
+local function speechValue()
+    local api = _G.C_CVar
+    if type(api) ~= "table" then return nil end
+    return A.Call(api.GetCVar, SPEECH_CVAR)
+end
+
+function C.ErrorSpeechAvailable() return speechValue() ~= nil end
+function C.ErrorSpeechMuted() return speechValue() == "0" end
+
+function C.SetErrorSpeechMuted(on)
+    local api = _G.C_CVar
+    if type(api) ~= "table" or not C.ErrorSpeechAvailable() then return false end
+    return pcall(api.SetCVar, SPEECH_CVAR, on and "0" or "1")
+end
+
+-- One-time carry-over of an old "mute error sounds" choice (see Logic.lua). Only ever switches the
+-- speech off, and only says so when it really did.
+function C.ConsumeSpeechCarry()
+    local data = db()
+    if not data.errSpeechCarry then return end
+    data.errSpeechCarry = nil
+    if C.ErrorSpeechAvailable() and not C.ErrorSpeechMuted() and C.SetErrorSpeechMuted(true) then
+        A.Print(tr("Fehlertöne laufen jetzt über die Spieleinstellung „Fehlersprache“ (Optionen → Audio). Sie wurde ausgeschaltet, weil du Fehlertöne stummgeschaltet hattest.",
+            "Error sounds now use the game's own “Error Speech” setting (Options → Audio). It was switched off because you had error sounds muted."))
+    end
 end
 
 ----------------------------------------------------------------------
@@ -258,6 +293,7 @@ function C.SettingsChanged()
     for key in pairs(C.HideTargets) do anyHide = anyHide or data[key] ~= "show" end
     local any = data.modQoL and (data.fastLoot or data.lootGreed or data.skipGossip or data.declineDuels or data.bgRelease or anyHide)
     listener:Set(any == true or next(C.hidden) ~= nil)
-    setErrorFilter(on("errorFilter") == true)
+    C.ConsumeSpeechCarry()
+    setErrorFilter(on("errorFilter") == true and anyKindChosen())
     if anyHide or next(C.hidden) ~= nil then C.ApplyHide() end
 end

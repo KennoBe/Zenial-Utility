@@ -92,9 +92,6 @@ L.Defaults = {
     errCooldown = true,
     errRange = true,
     errTarget = false,
-    errAll = false, -- every UI_ERROR_MESSAGE, not only the kinds above
-    errShowText = false, -- filtered kinds still show their red text
-    errPlaySound = false, -- filtered kinds still play their error sound or voice line
     rankCheck = false, -- mark action buttons that hold a lower rank than the one learned
     rankNotify = false, -- short chat note when newly learned ranks leave old ones on the bars
     hideBags = "show", -- show | hide | hover
@@ -133,13 +130,19 @@ local CHOICES = {
 local EXTRA = {"setup", "cvarBackup", "pendingRevert", "imported", "macroInputs", "macroSets", "played", "rollWindow",
     "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "layoutLibrary",
     "settingsWindow"}
-L.DataVersion = 3
+L.DataVersion = 4
 
 -- Up to 0.3 every topic had a hidden master switch (only on the overview cards). Its options stayed
 -- ticked on their pages while the topic was off, so the menu showed features as on that did not run.
 -- Since 0.4 every option stands for itself: a topic that was switched off turns its options off
 -- (and the master back on), so nothing that was inactive starts running after the update.
 -- The master keys stay in the defaults because the feature modules still read them.
+--
+-- Since 0.5 the error filter only hides the chosen kinds (text and its sound together) and the game
+-- shows everything else itself; error speech is the game's own setting. The old keys errAll,
+-- errShowText and errPlaySound are gone. Someone who had hidden the text keeps the filter; someone
+-- who had only muted sounds gets the filter off, and errSpeechCarry hands that wish to the game
+-- setting once (Comfort consumes the flag). It is no default, so profiles never carry it.
 L.Masters = {
     modMap = {mapReveal = "off", waypoints = false, mapLevels = false},
     modComfort = {vendorJunk = false, vendorRepair = false, vendorGuildRepair = false, questAccept = false,
@@ -222,6 +225,14 @@ function L.Sanitize(raw)
         out[key] = type(raw[key]) == "table" and raw[key] or {}
     end
     for key, repair in pairs(L.Structured) do out[key] = repair(raw[key]) end
+    if raw.errSpeechCarry == true then out.errSpeechCarry = true end
+    if raw.errorFilter == true and (raw.errAll ~= nil or raw.errShowText ~= nil or raw.errPlaySound ~= nil) then
+        local hideText, mute = raw.errShowText ~= true, raw.errPlaySound ~= true
+        if not hideText then
+            out.errorFilter = false
+            if mute then out.errSpeechCarry = true end
+        end
+    end
     for master, children in pairs(L.Masters) do
         if raw[master] == false then
             for key, value in pairs(children) do out[key] = value end

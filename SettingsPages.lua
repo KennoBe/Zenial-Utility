@@ -95,14 +95,13 @@ local function masterOff(key)
     return false
 end
 
--- The error filter only does something when it hides the text or mutes the sound for at least
--- one kind of message. The quick switch shows that real state.
+-- The error filter only does something when at least one kind of message is chosen to be hidden.
+-- The quick switch shows that real state.
 local ERROR_KINDS = {"errResource", "errCooldown", "errRange", "errTarget"}
 
 local function errFilterWorks()
     local d = db()
-    if d.errorFilter ~= true or (d.errShowText == true and d.errPlaySound == true) then return false end
-    if d.errAll then return true end
+    if d.errorFilter ~= true then return false end
     for _, key in ipairs(ERROR_KINDS) do if d[key] then return true end end
     return false
 end
@@ -113,10 +112,7 @@ local function setErrFilter(on)
     local d = db()
     d.errorFilter = on
     if not on then return end
-    if d.errShowText == true and d.errPlaySound == true then
-        d.errShowText, d.errPlaySound = L.Defaults.errShowText, L.Defaults.errPlaySound
-    end
-    local any = d.errAll
+    local any = false
     for _, key in ipairs(ERROR_KINDS) do any = any or d[key] end
     if not any then
         for _, key in ipairs(ERROR_KINDS) do d[key] = L.Defaults[key] end
@@ -146,8 +142,8 @@ U.Quick = {
         desc = {"Zeigt Informationen wie Gold, Zeit und Ort.", "Shows information such as gold, time and location."}, open = jumpTo("infobar")},
     {id = "errorFilter", title = {"Fehlermeldungen filtern", "Filter error messages"},
         desc = {"Filtert ausgewählte wiederkehrende rote Fehlermeldungen.", "Filters selected recurring red error messages."},
-        tip = {"Blendet die gewählten roten Meldungen aus und schaltet ihren Fehlerton stumm. Welche Meldungen und ob Text oder Ton, stellst du unter „Einstellen“ ein.",
-            "Hides the chosen red messages and mutes their error sound. Which messages, and whether text or sound, is set under “Configure”."},
+        tip = {"Blendet die gewählten roten Meldungen samt ihrem Ton aus. Alle anderen roten Meldungen bleiben sichtbar. Welche Arten, stellst du unter „Einstellen“ ein.",
+            "Hides the chosen red messages together with their sound. All other red messages stay visible. Pick the kinds under “Configure”."},
         get = errFilterWorks, set = setErrFilter, open = jumpTo("interface", "errors")},
 }
 
@@ -458,19 +454,7 @@ U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Lo
 ----------------------------------------------------------------------
 -- Interface and messages
 ----------------------------------------------------------------------
--- Two plain switches over the three stored error keys: hide the text, mute the sound.
-local function errHide() local d = db(); return d.errorFilter == true and d.errShowText ~= true end
-local function errMute() local d = db(); return d.errorFilter == true and d.errPlaySound ~= true end
-local function setErrHide(on)
-    local d, mute = db(), errMute()
-    d.errShowText, d.errPlaySound, d.errorFilter = not on, not mute, on or mute
-end
-local function setErrMute(on)
-    local d, hideText = db(), errHide()
-    d.errPlaySound, d.errShowText, d.errorFilter = not on, not hideText, on or hideText
-end
 local function errKindsActive() return db().errorFilter == true end
-local function errSingleKinds() return db().errorFilter == true and not db().errAll end
 
 local VISIBILITY = {{"show", {"Anzeigen", "Show"}}, {"hover", {"Nur bei Mauskontakt", "Only on mouse over"}}, {"hide", {"Ausblenden", "Hide"}}}
 
@@ -565,23 +549,25 @@ local function anyWarning()
 end
 
 U.AddPage({id = "interface", group = GROUP_SETTINGS, title = {"Interface & Meldungen", "Interface & messages"}, icon = "Interface\\Icons\\INV_Misc_Gear_01",
-    desc = {"Rote Fehlermeldungen und Fehlertöne, Warnhinweise, ausgeblendete Elemente und Zauberränge.", "Red error messages and error sounds, warnings, hidden elements and spell ranks."},
+    desc = {"Rote Fehlermeldungen und Fehlersprache, Warnhinweise, ausgeblendete Elemente und Zauberränge.", "Red error messages and error speech, warnings, hidden elements and spell ranks."},
     keywords = "ui interface oberfläche meldung message",
-    resetKeys = {"errorFilter", "errShowText", "errPlaySound"},
+    resetKeys = {"errorFilter"},
     nodes = {
-        section("errors", {"Fehlermeldungen und Fehlertöne", "Error messages and error sounds"},
-            {"Gilt für die roten Meldungen oben am Bildschirm, zum Beispiel „Nicht genug Mana“. Andere Sounds bleiben unberührt.", "Applies to the red messages at the top of the screen, for example “Not enough mana”. Other sounds stay untouched."},
+        section("errors", {"Fehlermeldungen und Fehlersprache", "Error messages and error speech"},
+            {"Gilt für die roten Meldungen oben am Bildschirm, zum Beispiel „Nicht genug Mana“. Ausgeblendet werden nur die gewählten Arten; alles andere zeigt das Spiel wie gewohnt.", "Applies to the red messages at the top of the screen, for example “Not enough mana”. Only the chosen kinds are hidden; the game shows everything else as usual."},
             "error fehler rot red uierrors"),
-        toggle(nil, {"Fehlertöne stummschalten", "Mute error sounds"}, {"Kein Warnton und keine Sprachausgabe wie „Das ist noch nicht bereit“.", "No warning tone and no voice line like “That ability isn't ready yet”."},
-            {id = "errMute", get = errMute, set = setErrMute, keywords = "sound ton audio stumm mute voice sprache stimme warnton geräusch noise lautlos"}),
-        toggle(nil, {"Rote Fehlermeldungen ausblenden", "Hide red error messages"}, {"Der Text erscheint nicht mehr am Bildschirm.", "The text no longer appears on screen."},
-            {id = "errHide", get = errHide, set = setErrHide, keywords = "text meldung message verstecken hide unterdrücken suppress"}),
-        toggle("errAll", {"Für alle gewöhnlichen Fehlermeldungen", "For all ordinary error messages"}, {"Sonst nur für die gewählten Arten darunter. Gelbe Hinweise und Systemmeldungen bleiben immer.", "Otherwise only for the kinds chosen below. Yellow notices and system messages always stay."},
-            {parent = errKindsActive, parentHint = {"Erst Töne stummschalten oder Meldungen ausblenden.", "First mute sounds or hide messages."}, keywords = "alle all"}),
-        toggle("errResource", {"Nicht genug Mana, Energie oder Wut", "Not enough mana, energy or rage"}, nil, {parent = errSingleKinds, keywords = "mana energie energy wut rage fokus focus ressource resource"}),
-        toggle("errCooldown", {"Fähigkeit noch nicht bereit", "Ability not ready yet"}, nil, {parent = errSingleKinds, keywords = "abklingzeit cooldown bereit ready"}),
-        toggle("errRange", {"Ziel außer Reichweite", "Target out of range"}, nil, {parent = errSingleKinds, keywords = "reichweite range entfernung distance"}),
-        toggle("errTarget", {"Kein oder ungültiges Ziel", "No or invalid target"}, nil, {parent = errSingleKinds, keywords = "ziel target"}),
+        -- The speech switch reads and writes the game's own setting; nothing is stored by the addon.
+        toggle(nil, {"Fehlersprache stummschalten", "Mute error speech"}, {"Schaltet die Spieleinstellung „Fehlersprache“ (Optionen → Audio) um. Stumm sind dann nur gesprochene Ansagen wie „Das ist noch nicht bereit“; rote Texte und alle anderen Sounds bleiben. Einzelne Warntöne ohne Sprache können weiter zu hören sein.", "Switches the game's own “Error Speech” setting (Options → Audio). Only spoken lines like “That ability isn't ready yet” go quiet; red texts and all other sounds stay. Some warning tones without speech may still be heard."},
+            {id = "errSpeech", get = function() return NS.Comfort.ErrorSpeechMuted() end, set = function(on) NS.Comfort.SetErrorSpeechMuted(on) end,
+                enabled = function() return NS.Comfort.ErrorSpeechAvailable() end,
+                parentHint = {"Dieser Client bietet die Einstellung nicht an.", "This client does not offer the setting."},
+                keywords = "sound ton audio stumm mute voice sprache stimme warnton geräusch noise lautlos fehlersprache error speech"}),
+        toggle(nil, {"Ausgewählte rote Fehlermeldungen ausblenden", "Hide selected red error messages"}, {"Nur die unten gewählten Arten verschwinden, zusammen mit ihrem Ton. Alle anderen roten Meldungen bleiben sichtbar.", "Only the kinds chosen below disappear, together with their sound. All other red messages stay visible."},
+            {id = "errHide", get = function() return db().errorFilter == true end, set = setErrFilter, keywords = "text meldung message verstecken hide unterdrücken suppress"}),
+        toggle("errResource", {"Nicht genug Mana, Energie oder Wut", "Not enough mana, energy or rage"}, nil, {parent = errKindsActive, parentHint = {"Erst „Ausgewählte rote Fehlermeldungen ausblenden“ einschalten.", "First turn on “Hide selected red error messages”."}, keywords = "mana energie energy wut rage fokus focus ressource resource"}),
+        toggle("errCooldown", {"Fähigkeit noch nicht bereit", "Ability not ready yet"}, nil, {parent = errKindsActive, parentHint = {"Erst „Ausgewählte rote Fehlermeldungen ausblenden“ einschalten.", "First turn on “Hide selected red error messages”."}, keywords = "abklingzeit cooldown bereit ready"}),
+        toggle("errRange", {"Ziel außer Reichweite", "Target out of range"}, nil, {parent = errKindsActive, parentHint = {"Erst „Ausgewählte rote Fehlermeldungen ausblenden“ einschalten.", "First turn on “Hide selected red error messages”."}, keywords = "reichweite range entfernung distance"}),
+        toggle("errTarget", {"Kein oder ungültiges Ziel", "No or invalid target"}, nil, {parent = errKindsActive, parentHint = {"Erst „Ausgewählte rote Fehlermeldungen ausblenden“ einschalten.", "First turn on “Hide selected red error messages”."}, keywords = "ziel target"}),
 
         section("warnings", {"Warnhinweise", "Warnings"}, {"Eine Meldung, sobald der Grenzwert erreicht ist. Erneut erst, nachdem sich der Wert erholt hat.", "One message once the limit is reached. Again only after the value has recovered."}, "warnung warning hinweis"),
         toggle("warnDurability", {"Niedrige Haltbarkeit", "Low durability"}, nil, {keywords = "haltbarkeit durability rüstung armor reparieren repair"}),

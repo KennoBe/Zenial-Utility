@@ -43,8 +43,8 @@ function S.Initialize(fresh)
         v:Dropdown(p, "graphicsChoice", 0, 0, 400, {{"keep", tr("Grafik unverändert lassen", "Leave graphics unchanged")},
             {"beauty", tr("Vorlage „Schöne Weitsicht“ verwenden", "Use the “Beautiful views” preset")},
             {"fps", tr("Vorlage „Mehr FPS – gute Optik“ verwenden", "Use the “More FPS – good looks” preset")}})
-        v:Label(p, tr("Schöne Weitsicht braucht einen kräftigen Rechner, Mehr FPS senkt teure Effekte. Deine Werte werden gesichert; ohne Bestätigung binnen 30 Sekunden kehrt alles zurück.",
-            "Beautiful views needs a capable computer, More FPS lowers expensive effects. Your values are saved; without confirmation within 30 seconds everything reverts."), 0, -50, 552, 70, "GameFontHighlightSmall", "muted")
+        v:Label(p, tr("Schöne Weitsicht braucht einen kräftigen Rechner und setzt 98 % Render-Skalierung mit Schärfe 0,5. Mehr FPS senkt teure Effekte. Deine Werte werden gesichert; ohne Bestätigung binnen 30 Sekunden kehrt alles zurück.",
+            "Beautiful views needs a capable computer and sets 98% render scale with sharpness 0.5. More FPS lowers expensive effects. Your values are saved; without confirmation within 30 seconds everything reverts."), 0, -50, 552, 70, "GameFontHighlightSmall", "muted")
     end)
     page("Karte", "Map",
         "Aufdecken ändert nur die Anzeige. Erkundung, Erfahrung und Erfolge bleiben unberührt.",
@@ -110,8 +110,23 @@ function S.Initialize(fresh)
             for _, key in ipairs(KEYS) do NS.App.db[key] = draft[key] end
             NS.App:Changed()
             if draft.graphicsChoice == "beauty" or draft.graphicsChoice == "fps" then
-                NS.Graphics.StagePreset(draft.graphicsChoice)
-                NS.Graphics.Apply(NS.App.db)
+                local G = NS.Graphics
+                local missing = G.PresetPlan(draft.graphicsChoice).missing
+                G.StagePreset(draft.graphicsChoice)
+                local ok, changed, refused, clamped = G.Apply(NS.App.db)
+                -- Partial application must not stay silent; combat keeps its existing behaviour.
+                if not (ok == false and changed == "combat") then
+                    local unavailable = {}
+                    for _, name in ipairs(missing) do unavailable[#unavailable + 1] = name end
+                    for _, name in ipairs(type(refused) == "table" and refused or {}) do unavailable[#unavailable + 1] = name end
+                    local adjusted = type(clamped) == "table" and clamped or {}
+                    if #unavailable > 0 or #adjusted > 0 then
+                        local parts = {tr("Grafikvorlage nur teilweise angewendet.", "Graphics preset only partly applied.")}
+                        if #unavailable > 0 then parts[#parts + 1] = tr("Nicht verfügbar oder abgelehnt: ", "Not available or refused: ") .. table.concat(unavailable, ", ") .. "." end
+                        if #adjusted > 0 then parts[#parts + 1] = tr("Vom Spiel angepasst: ", "Adjusted by the game: ") .. table.concat(adjusted, ", ") .. "." end
+                        NS.Adapter.Print(table.concat(parts, " "))
+                    end
+                end
                 U.Refresh()
             end
         end,

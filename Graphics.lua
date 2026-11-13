@@ -131,6 +131,27 @@ function G.PresetPlan(key)
     return plan
 end
 
+-- The preset's summary lines as plain strings. An entry with `needs` only counts when this client
+-- offers every named setting and takes the preset's value for it, so no line describes a change
+-- that cannot happen here.
+function G.PresetSummary(key)
+    local preset = G.Preset(key)
+    local out = {}
+    if not preset or not preset.summary then return out end
+    for _, entry in ipairs(preset.summary) do
+        if type(entry) == "string" then
+            out[#out + 1] = entry
+        else
+            local usable = true
+            for _, name in ipairs(entry.needs or {}) do
+                if not G.AllowedRow(name) or not G.Writable(name) or not G.InRange(name, preset.values[name]) then usable = false end
+            end
+            if usable then out[#out + 1] = entry.text end
+        end
+    end
+    return out
+end
+
 -- Choosing another preset replaces what an earlier, unapplied preset staged.
 -- Values the player moved by hand stay staged.
 function G.StagePreset(key)
@@ -176,6 +197,7 @@ local function commit(db, values, keepBackup)
     for _, section in ipairs(NS.GraphicsCatalog) do
         for _, row in ipairs(section.rows) do snapshot[row.name] = G.Current(row.name) end
     end
+    local written = {}
     for _, name in ipairs(ordered(values)) do
         local value = values[name]
         local before = G.Current(name)
@@ -184,6 +206,7 @@ local function commit(db, values, keepBackup)
             if result == "refused" then
                 refused[#refused + 1] = name
             else
+                written[#written + 1] = name
                 -- A slider written earlier in this run may already have moved it; the value
                 -- from before this change is the one to go back to.
                 local original = snapshot[name] ~= nil and snapshot[name] or before
@@ -194,6 +217,16 @@ local function commit(db, values, keepBackup)
                 local row = G.AllowedRow(name)
                 if row and row.restart then restart[#restart + 1] = row.title end
             end
+        end
+    end
+    -- A later write can move an earlier one, so read every written value once more: the report
+    -- has to describe what the client really holds, not what each single write returned.
+    local isClamped = {}
+    for _, name in ipairs(clamped) do isClamped[name] = true end
+    for _, name in ipairs(written) do
+        if not isClamped[name] and not same(G.Current(name), values[name]) then
+            clamped[#clamped + 1] = name
+            isClamped[name] = true
         end
     end
     if changed > 0 then

@@ -106,7 +106,9 @@ function U.fixed.graphics(v, page)
             U.Refresh()
         end, "secondary")
         local tip = preset.hint
-        if preset.summary then tip = tip .. "\n\n" .. table.concat(preset.summary, "\n") end
+        -- The tooltip text is static, so the summary is evaluated once for this client.
+        local lines = G.PresetSummary(preset.key)
+        if #lines > 0 then tip = tip .. "\n\n" .. table.concat(lines, "\n") end
         W.Tooltip(button, preset.title, tip)
         buttons[#buttons + 1] = button
     end
@@ -135,7 +137,8 @@ function U.fixed.graphics(v, page)
         if not preset then plan:SetText(""); return end
         local info = G.PresetPlan(key)
         local parts = {string.format(tr("„%s“: %d Änderungen vorgemerkt", "“%s”: %d changes staged"), preset.title, info.changes)}
-        if preset.summary then parts[#parts + 1] = table.concat(preset.summary, "  ·  ") end
+        local lines = G.PresetSummary(key)
+        if #lines > 0 then parts[#parts + 1] = table.concat(lines, "  ·  ") end
         if #info.missing > 0 then parts[#parts + 1] = string.format(tr("Nicht verfügbar: %s", "Not available: %s"), table.concat(info.missing, ", ")) end
         if #info.restart > 0 then parts[#parts + 1] = string.format(tr("Braucht einen Neustart: %s", "Needs a restart: %s"), table.concat(info.restart, ", ")) end
         plan:SetText(table.concat(parts, "\n"))

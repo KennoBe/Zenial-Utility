@@ -71,8 +71,17 @@ NS.GraphicsCatalog = {
             "0 bilinear, 1 trilinear, 2 bis 5 anisotrop 2×, 4×, 8×, 16×.", "0 bilinear, 1 trilinear, 2 to 5 anisotropic 2×, 4×, 8×, 16×."),
         range("terrainMipLevel", "Bodentexturen", "Ground textures", 0, 1, 1, 0,
             "0 ist die schärfste Stufe.", "0 is the sharpest level."),
+        range("RenderScale", "Render-Skalierung", "Render scale", .5, 2, .01, 3,
+            "Interne Auflösung im Verhältnis zur Bildschirmauflösung: 1 entspricht 100 %. Unter 1 wird hochskaliert, über 1 kostet viele FPS.",
+            "Internal resolution relative to the screen resolution: 1 means 100%. Below 1 the image is upscaled, above 1 costs a lot of FPS."),
+        range("ResampleQuality", "Skalierungsfilter", "Resample filter", 0, 3, 1, 1,
+            "0 Punkt, 1 bilinear, 2 bikubisch, 3 FidelityFX Super Resolution. Wirkt nur, wenn die Render-Skalierung nicht 100 % beträgt.",
+            "0 point, 1 bilinear, 2 bicubic, 3 FidelityFX Super Resolution. Only matters when the render scale is not 100%."),
         toggle("ResampleAlwaysSharpen", "Immer nachschärfen", "Always sharpen", 0,
             "Schärft das Bild auch bei voller Renderauflösung.", "Sharpens the image even at full render resolution."),
+        range("ResampleSharpness", "Stärke der Schärfung", "Sharpening strength", 0, 2, .05, 0,
+            "Kleinere Werte schärfen stärker: 0 ist am schärfsten, 2 am schwächsten.",
+            "Lower values sharpen more: 0 is the sharpest, 2 the weakest."),
     }),
     group("water", "Wasser und Wetter", "Water and weather", {
         range("reflectionMode", "Spiegelungen im Wasser", "Water reflections", 0, 3, 1, 2,
@@ -111,10 +120,14 @@ NS.GraphicsCatalog = {
 }
 
 -- Ready-made sets. "values" lists exactly what a preset changes; everything else stays as it is.
--- Never touched by a preset: resolution, render scale, window mode, frame limits, VSync, gamma,
--- HDR (own preset), camera, nameplates, spell queue, screenshots and sound. giQuality stays out
--- on purpose: low values break Forever's lighting and high ones were reported to crash.
--- `summary` is shown before applying; it describes, it does not promise any FPS number.
+-- Never touched by a preset: resolution, window mode, frame limits, VSync, gamma,
+-- HDR (own preset), camera, nameplates, spell queue, screenshots and sound. Render scale and
+-- sharpening strength are set by the beauty preset only; the resample filter is never touched by a
+-- preset. giQuality stays out on purpose: low values break Forever's lighting and high ones were
+-- reported to crash.
+-- `summary` is shown before applying; it describes, it does not promise any FPS number. An entry is
+-- a plain string or {text, needs = {names}}; the latter is only shown when the client offers all
+-- of those settings (see G.PresetSummary).
 NS.GraphicsPresets = {
     {
         key = "beauty",
@@ -126,6 +139,7 @@ NS.GraphicsPresets = {
             tr("Sichtweite: maximal, wenig Aufploppen", "View distance: maximum, little pop-in"),
             tr("Licht: hoch statt Ultra", "Lighting: high instead of ultra"),
             tr("Texturen: 16× gefiltert, scharf", "Textures: 16× filtered, sharp"),
+            {text = tr("Bild: 98 % Render-Skalierung, Schärfe 0,5", "Image: 98% render scale, sharpness 0.5"), needs = {"RenderScale", "ResampleSharpness"}},
         },
         values = {
             graphicsViewDistance = 9, graphicsEnvironmentDetail = 9,
@@ -135,6 +149,7 @@ NS.GraphicsPresets = {
             horizonStart = 3000,
             shadowNumCascades = 4, shadowBlendCascades = 1, sunShafts = 2,
             textureFilteringMode = 5, terrainMipLevel = 0, ResampleAlwaysSharpen = 1,
+            RenderScale = .98, ResampleSharpness = .5,
             reflectionMode = 3, rippleDetail = 2, weatherDensity = 3, projectedTextures = 1,
         },
     },

@@ -8,6 +8,7 @@ local T, A, M, tr = NS.Theme, NS.Adapter, NS.LootRollModel, NS.Text
 -- the position of its buttons. Gaps between cards close only while no card behind them is still open.
 
 local WIDTH, LARGE_H, COMPACT_H, GAP = 340, 112, 26, 4
+local HEADER_H, TOGGLE_W = 22, 96
 local LARGE_SLOTS, LIST_ROWS, ROW_H = 3, 8, 14
 local LIST_H = LIST_ROWS * ROW_H + 8
 local BAR_WIDTH = WIDTH - 64
@@ -109,21 +110,26 @@ end
 local function createAnchor()
     if C.anchor then return C.anchor end
     local anchor = CreateFrame("Frame", "ZenialUtilityLootRoll", UIParent, BACKDROP)
-    anchor:SetSize(WIDTH, 24)
+    anchor:SetSize(WIDTH, HEADER_H)
     anchor:SetScale(db().lootRollScale)
     anchor:SetFrameStrata("MEDIUM")
     anchor:SetClampedToScreen(true)
     anchor:SetMovable(true)
     anchor:RegisterForDrag("LeftButton")
-    anchor:SetScript("OnDragStart", function(self) if C.moving then self:StartMoving() end end)
+    -- The header is the handle of the window: it can be dragged whenever it is on screen.
+    anchor:EnableMouse(true)
+    anchor:SetScript("OnDragStart", function(self) self:StartMoving() end)
     anchor:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         db().lootRollPosition = {x = self:GetLeft(), y = self:GetTop()}
         place()
     end)
-    anchor.label = T.Text(anchor, tr("Loot-Würfe: ziehen zum Verschieben", "Loot rolls: drag to move"), "GameFontHighlightSmall", "gold")
+    T.Panel(anchor, "inset")
+    anchor.label = T.Text(anchor, tr("Loot-Würfe", "Loot rolls"), "GameFontHighlightSmall", "gold")
     anchor.label:SetPoint("LEFT", 8, 0)
-    anchor.label:Hide()
+    anchor.hint = T.Text(anchor, tr("ziehen zum Verschieben", "drag to move"), "GameFontHighlightSmall", "muted")
+    anchor.hint:SetPoint("RIGHT", -8, 0)
+    anchor.hint:SetJustifyH("RIGHT")
     C.anchor = anchor
     place()
     return anchor
@@ -226,7 +232,7 @@ local function createCard()
         card.buttons[index] = button
     end
 
-    card.toggle = T.Button(card, "+", 44, 16, function()
+    card.toggle = T.Button(card, "", TOGGLE_W, 16, function()
         if card.rollID == nil then return end
         C.expanded[card.rollID] = not C.expanded[card.rollID] or nil
         C.Refresh()
@@ -260,7 +266,7 @@ local function applyMode(card, large)
         card.barBack:SetPoint("TOPLEFT", 8, -54); card.barBack:SetSize(BAR_WIDTH, 6)
         card.barFill:SetPoint("TOPLEFT", 8, -54); card.barFill:SetSize(BAR_WIDTH, 6)
         card.seconds:SetPoint("TOPRIGHT", -8, -51); card.seconds:SetWidth(44)
-        card.status:SetPoint("TOPLEFT", 8, -94); card.status:SetWidth(WIDTH - 66)
+        card.status:SetPoint("TOPLEFT", 8, -94); card.status:SetWidth(WIDTH - 22 - TOGGLE_W)
         card.toggle:SetPoint("TOPRIGHT", -8, -92)
         for index, button in ipairs(card.buttons) do
             button:ClearAllPoints()
@@ -360,7 +366,7 @@ local function render(card, roll, large, now)
 
     local expanded = large and C.expanded[roll.rollID] == true
     if large then
-        card.toggle:SetText((expanded and "- " or "+ ") .. #roll.players)
+        card.toggle:SetText(expanded and tr("Zuklappen", "Collapse") or tr("Aufklappen", "Expand"))
         card.toggle:SetShown(#roll.players > 0 or expanded)
     end
     card:EnableMouseWheel(expanded)
@@ -447,8 +453,8 @@ function C.Refresh()
         bySlot[slot], maxSlot = card, math.max(maxSlot, slot)
         render(card, current.rolls[rollID], slot <= LARGE_SLOTS and not compactAll, now)
     end
-    -- An empty place keeps its height so the cards behind it do not move.
-    local y = 0
+    -- An empty place keeps its height so the cards behind it do not move. The cards start next to the header.
+    local y = GAP
     for slot = 1, maxSlot do
         local card = bySlot[slot]
         local height
@@ -468,17 +474,14 @@ function C.Refresh()
     end
 end
 
+-- Shows the header without a roll, so the window can be placed while nothing is going on.
 function C.SetMoving(active)
     local anchor = createAnchor()
     C.moving = active == true
-    anchor:EnableMouse(C.moving)
-    anchor.label:SetShown(C.moving)
     if C.moving then
-        T.Panel(anchor, "inset")
         anchor:Show()
-    else
-        if anchor.SetBackdrop then anchor:SetBackdrop(nil) end
-        if #state().order == 0 then anchor:Hide() end
+    elseif #state().order == 0 then
+        anchor:Hide()
     end
 end
 

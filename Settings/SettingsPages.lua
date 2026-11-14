@@ -450,8 +450,9 @@ U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Lo
         toggle("lootRoll", {"Eigenes Würfelfenster für Gruppenbeute", "Own roll window for group loot"}, {"Entscheidungen gehen nur per Klick an das Spiel. Das Blizzard-Fenster ist jederzeit durch Ausschalten zurück.", "Choices only go to the game when you click. Turning this off brings the Blizzard window back at any time."}, {keywords = "würfel würfeln roll bedarf need gier greed loot fenster window gruppenbeute group loot"}),
         note(lootRollHint, {ref = "lootRollStatus", height = 34, indent = true, color = "gold"}),
         choice("lootRollResultTime", {"Ergebnis anzeigen", "Show the result"}, {
-            {0, {"Sofort ausblenden", "Hide at once"}}, {3, {seconds(3), seconds(3)}}, {6, {seconds(6), seconds(6)}},
-            {10, {seconds(10), seconds(10)}}, {20, {seconds(20), seconds(20)}}},
+            {0, {"Sofort ausblenden", "Hide at once"}}, {3, {seconds(3), seconds(3)}}, {5, {seconds(5), seconds(5)}},
+            {10, {seconds(10), seconds(10)}}, {20, {seconds(20), seconds(20)}}, {30, {seconds(30), seconds(30)}},
+            {45, {seconds(45), seconds(45)}}, {60, {seconds(60), seconds(60)}}},
             {parent = "lootRoll", keywords = "ergebnis result dauer duration zeit time würfel roll"}),
         slider("lootRollScale", {"Größe des Würfelfensters", "Roll window size"}, .6, 1.6, .05, {parent = "lootRoll", format = scaleText, keywords = "skalierung scale größe size würfel roll"}),
         choice("lootRollGrow", {"Weitere Würfe erscheinen", "More rolls appear"}, {
@@ -466,7 +467,7 @@ U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Lo
                 NS.LootRollDemo.Start()
                 v:SetMessage(tr("Vorschau läuft. Mit /zutil loot test beenden.", "Preview is running. End it with /zutil loot test."))
             end},
-            {text = {"Fenster verschieben", "Move window"}, width = 170, tip = {"Fenster ziehen, danach erneut klicken.", "Drag the window, then click again."}, keywords = "verschieben move position würfel roll", action = function(v)
+            {text = {"Fenster verschieben", "Move window"}, width = 170, tip = {"Zeigt die Kopfzeile auch ohne laufenden Wurf. Fenster ziehen, danach erneut klicken. Während eines Wurfs lässt sich das Fenster immer an der Kopfzeile ziehen.", "Shows the header without a running roll. Drag the window, then click again. During a roll the window can always be dragged by its header."}, keywords = "verschieben move position würfel roll", action = function(v)
                 local cards = NS.LootRollCards
                 cards.SetMoving(not cards.moving)
                 v:SetMessage(cards.moving and tr("Fenster an die gewünschte Stelle ziehen, dann erneut auf „Fenster verschieben“ klicken.", "Drag the window where you want it, then click “Move window” again.") or tr("Position gespeichert.", "Position saved."))

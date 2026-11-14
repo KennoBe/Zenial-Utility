@@ -73,10 +73,10 @@ function D.Start()
             duration = DURATION, timeLeft = DURATION, allowed = allowed, offers = offers, demo = true}, now)
     end
     local all = {[0] = true, [1] = true, [2] = true}
-    -- Two identical items and a third one that offers transmog instead of greed.
+    -- Two identical items and a third, different one.
     add(IDS[1], ring, tr("Demo-Ring", "Demo Ring"), 3, {1, 2, 0}, all)
     add(IDS[2], ring, tr("Demo-Ring", "Demo Ring"), 3, {1, 2, 0}, all)
-    add(IDS[3], staff, tr("Demo-Stab", "Demo Staff"), 4, {1, 4, 0}, {[0] = true, [1] = true, [4] = true})
+    add(IDS[3], staff, tr("Demo-Stab", "Demo Staff"), 4, {1, 2, 0}, all)
     D.steps, D.elapsed = script(), 0
     if not D.driver then D.driver = CreateFrame("Frame") end
     D.driver:SetScript("OnUpdate", function(_, dt)

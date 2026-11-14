@@ -102,7 +102,9 @@ L.Defaults = {
     hideZoneText = "show",
     -- Loot roll window instead of the game's own roll frames (off by default; the window acts only on a click).
     lootRoll = false,
-    lootRollResultTime = 6, -- seconds a finished roll stays: 0 | 3 | 6 | 10 | 20
+    -- Seconds a finished roll stays: 0 | 3 | 5 | 10 | 20 | 30 | 45 | 60. 1.1.0 had 6 as its default; 6 is no
+    -- choice any more, so a save from then moves to the new default.
+    lootRollResultTime = 20,
     lootRollScale = 1,
     lootRollGrow = "down", -- down | up
     lootRollCompact = false,
@@ -131,7 +133,7 @@ local CHOICES = {
     ttLayout = {compact = true, lines = true, blizz = true},
     ttAnchor = {default = true, TOPLEFT = true, TOPRIGHT = true, BOTTOMLEFT = true, BOTTOMRIGHT = true},
     ttHealthBar = {default = true, flat = true, soft = true},
-    lootRollResultTime = {[0] = true, [3] = true, [6] = true, [10] = true, [20] = true},
+    lootRollResultTime = {[0] = true, [3] = true, [5] = true, [10] = true, [20] = true, [30] = true, [45] = true, [60] = true},
     lootRollGrow = {down = true, up = true},
     lootRollHistorySize = {[20] = true, [50] = true, [100] = true},
     hideBags = VISIBILITY, hideMicro = VISIBILITY, hideClock = VISIBILITY, hideCalendar = VISIBILITY,

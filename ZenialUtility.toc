@@ -3,7 +3,7 @@
 ## Notes: Macro browser, hidden graphics settings, map reveal, layout library and small everyday helpers for WoW Forever
 ## Notes-deDE: Makro-Browser, versteckte Grafikeinstellungen, Karte aufdecken, Layout-Bibliothek und kleine Alltagshelfer für WoW Forever
 ## Author: ZENIAL
-## Version: 1.1.0
+## Version: 1.1.1
 ## SavedVariables: ZenialUtilityDB, ZenialMinimapDB
 ## IconTexture: Interface\AddOns\ZenialUtility\Media\Icon.tga
 ## X-License: MIT

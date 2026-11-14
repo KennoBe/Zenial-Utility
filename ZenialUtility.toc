@@ -33,11 +33,17 @@ Modules\InfoBar.lua
 Modules\Tooltips.lua
 Modules\Comfort.lua
 Modules\LootFeed.lua
+Modules\LootRoll\Model.lua
 Modules\Layouts\LayoutPresets.lua
 Modules\Layouts\Layouts.lua
 Widgets.lua
 Modules\Reminders\WarnBars.lua
 Modules\RollWindow.lua
+Modules\LootRoll\Native.lua
+Modules\LootRoll\LootRoll.lua
+Modules\LootRoll\Cards.lua
+Modules\LootRoll\Demo.lua
+Modules\LootRoll\HistoryWindow.lua
 ConfigWizard.lua
 Settings\SettingsSearch.lua
 Settings\SettingsControls.lua

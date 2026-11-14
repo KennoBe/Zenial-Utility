@@ -31,7 +31,10 @@ end
 function C.LootRoll(rollID)
     if not on("lootGreed") or not rollID then return end
     local _, _, _, quality, bindOnPickup, _, canGreed = A.Call(GetLootRollItemInfo, rollID)
-    if quality == 2 and canGreed == true and bindOnPickup ~= true then A.Call(RollOnLoot, rollID, 2) end
+    if quality == 2 and canGreed == true and bindOnPickup ~= true then
+        A.Call(RollOnLoot, rollID, 2)
+        if NS.LootRoll then NS.LootRoll.AutoChoice(rollID, 2) end
+    end
 end
 
 ----------------------------------------------------------------------

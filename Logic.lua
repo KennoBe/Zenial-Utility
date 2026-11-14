@@ -100,6 +100,13 @@ L.Defaults = {
     hideCalendar = "show",
     hideTracking = "show",
     hideZoneText = "show",
+    -- Loot roll window instead of the game's own roll frames (off by default; the window acts only on a click).
+    lootRoll = false,
+    lootRollResultTime = 6, -- seconds a finished roll stays: 0 | 3 | 6 | 10 | 20
+    lootRollScale = 1,
+    lootRollGrow = "down", -- down | up
+    lootRollCompact = false,
+    lootRollHistorySize = 50, -- 20 | 50 | 100
 }
 
 L.Bounds = {
@@ -108,6 +115,7 @@ L.Bounds = {
     bagSlots = {1, 20},
     lootFeedTime = {2, 5},
     lootFeedScale = {.6, 1.6},
+    lootRollScale = {.6, 1.6},
     ammoThreshold = {10, 5000},
     infoScale = {.6, 1.6},
     infoFont = {8, 20},
@@ -123,12 +131,15 @@ local CHOICES = {
     ttLayout = {compact = true, lines = true, blizz = true},
     ttAnchor = {default = true, TOPLEFT = true, TOPRIGHT = true, BOTTOMLEFT = true, BOTTOMRIGHT = true},
     ttHealthBar = {default = true, flat = true, soft = true},
+    lootRollResultTime = {[0] = true, [3] = true, [6] = true, [10] = true, [20] = true},
+    lootRollGrow = {down = true, up = true},
+    lootRollHistorySize = {[20] = true, [50] = true, [100] = true},
     hideBags = VISIBILITY, hideMicro = VISIBILITY, hideClock = VISIBILITY, hideCalendar = VISIBILITY,
     hideTracking = VISIBILITY, hideZoneText = VISIBILITY,
 }
 -- Account data that belongs to no profile and is kept as it is.
 local EXTRA = {"setup", "cvarBackup", "pendingRevert", "imported", "macroInputs", "macroSets", "played", "rollWindow",
-    "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "layoutLibrary",
+    "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "lootRollPosition", "layoutLibrary",
     "settingsWindow"}
 L.DataVersion = 4
 
@@ -151,7 +162,7 @@ L.Masters = {
     modExtras = {screenshotLevel = false, screenshotBoss = false, tooltipIDs = false, rollTracker = false},
     modInventory = {bagMove = false, xpText = false, xpPercent = false, mailAlts = false, destroyGray = false},
     modTooltip = {ttUnit = false, ttGathering = false, ttItemLevel = false, ttAnchor = "default", ttHealthBar = "default"},
-    modQoL = {fastLoot = false, lootConfirmSolo = false, lootGreed = false, lootFeed = false, skipGossip = false,
+    modQoL = {fastLoot = false, lootConfirmSolo = false, lootGreed = false, lootFeed = false, lootRoll = false, skipGossip = false,
         declineDuels = false, bgRelease = false, errorFilter = false, rankCheck = false,
         hideBags = "show", hideMicro = "show", hideClock = "show", hideCalendar = "show", hideTracking = "show", hideZoneText = "show"},
 }

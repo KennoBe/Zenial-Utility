@@ -7,7 +7,7 @@ local W, L, U, tr = NS.ConfigWizard, NS.Logic, NS.SettingsUI, NS.Text
 local KEYS = {"mapReveal", "vendorJunk", "vendorRepair", "questAccept", "questTurnIn",
     "warnDurability", "warnBags", "warnAmmo", "warnPoison", "warnReagents", "screenshotLevel", "screenshotBoss",
     "tooltipIDs", "rollTracker",
-    "modBuffs", "modInfoBar", "questRewardValue", "fastLoot", "lootFeed"}
+    "modBuffs", "modInfoBar", "questRewardValue", "fastLoot", "lootFeed", "lootRoll"}
 
 local function sanitize(raw, current)
     local combined = L.Copy(current)
@@ -78,12 +78,13 @@ function S.Initialize(fresh)
     end)
     page("Neue Anzeigen", "New displays",
         "Diese Helfer zeigen etwas Neues an und bleiben aus, bis du sie wählst.",
-        "These helpers show something new and stay off until you choose them.", 190, function(v, p)
+        "These helpers show something new and stay off until you choose them.", 226, function(v, p)
         v:Check(p, "modBuffs", tr("Warnleisten für Buffs und Verbrauchsmaterial", "Warning bars for buffs and consumables"), 0, 0)
         v:Check(p, "modInfoBar", tr("Infoleiste mit Gold, Zeit, Ort und mehr", "Info bar with gold, time, location and more"), 0, -36)
         v:Check(p, "questRewardValue", tr("Händlerwert auf Questbelohnungen", "Vendor value on quest rewards"), 0, -72)
         v:Check(p, "fastLoot", tr("Schnelles Plündern", "Fast looting"), 0, -108)
         v:Check(p, "lootFeed", tr("Loot-Anzeige für erhaltene Gegenstände", "Loot display for received items"), 0, -144)
+        v:Check(p, "lootRoll", tr("Eigenes Würfelfenster für Gruppenbeute", "Own roll window for group loot"), 0, -180)
     end)
     page("Bereit", "Ready",
         "Deine Auswahl. Alles bleibt unter /zutil änderbar.",

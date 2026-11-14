@@ -31,6 +31,7 @@ App:AddModule(NS.Inventory)
 App:AddModule(NS.Tooltips)
 App:AddModule(NS.Comfort)
 App:AddModule(NS.LootFeed)
+App:AddModule(NS.LootRoll)
 App:AddModule(NS.ActionRanks)
 
 function App:GraphicsConfirm()
@@ -121,7 +122,15 @@ SLASH_ZENIALUTILITY2 = "/zenialutility"
 SlashCmdList.ZENIALUTILITY = function(command)
     if not App.db then return end
     command = (command or ""):match("^%s*(.-)%s*$"):lower()
-    if command == "config" then NS.Setup.Open()
+    local lootCommand = command:match("^loot%s+(%a+)$")
+    if lootCommand == "history" then NS.LootRollHistory.Show()
+    elseif lootCommand == "test" then
+        local Demo = NS.LootRollDemo
+        if Demo.Running() then Demo.Stop() else Demo.Start() end
+    elseif lootCommand == "debug" then
+        A.Print("loot roll: " .. NS.LootRoll.Status())
+        for _, line in ipairs(NS.LootRoll.Dump()) do A.Print(line) end
+    elseif command == "config" then NS.Setup.Open()
     elseif NS.SettingsUI.Titles[command] then NS.SettingsUI.Open(command)
     else NS.SettingsUI.Toggle() end
 end

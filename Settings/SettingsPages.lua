@@ -402,6 +402,20 @@ local function buildSellStats(form, v, p)
     end)
 end
 
+-- One sentence when the roll window is on but cannot take over; empty otherwise.
+local function lootRollHint()
+    if not db().lootRoll then return "" end
+    local status = NS.LootRoll.Status()
+    if status == "gamepad" then
+        return tr("Die Gamepad-Oberfläche ist aktiv. Dort bleibt das Blizzard-Fenster zuständig.", "The gamepad interface is active. The Blizzard window stays in charge there.")
+    elseif status == "unsupported" then
+        return tr("Dieser Client bietet die nötigen Schnittstellen nicht. Das Blizzard-Fenster bleibt zuständig.", "This client lacks the needed interfaces. The Blizzard window stays in charge.")
+    elseif status:find("^conflict:") then
+        return string.format(tr("%s ist geladen und übernimmt die Würfe. Das Blizzard-Fenster bleibt zuständig.", "%s is loaded and handles the rolls. The Blizzard window stays in charge."), status:sub(10))
+    end
+    return ""
+end
+
 U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Loot & vendors"}, icon = "Interface\\Icons\\INV_Misc_Bag_10",
     desc = {"Plündern, Loot-Popup, Verkaufen, Reparieren und Nachkaufen.", "Looting, loot popup, selling, repairing and restocking."},
     keywords = "loot beute plündern händler vendor merchant",
@@ -427,6 +441,43 @@ U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Lo
                 if not NS.LootFeed.Preview() then v:SetMessage(tr("Erst das Loot-Popup einschalten.", "Turn on the loot popup first.")) end
             end},
             {text = {"Position zurücksetzen", "Reset position"}, width = 190, action = function(v) NS.LootFeed.ResetPosition(); v:SetMessage(tr("Position zurückgesetzt.", "Position reset.")) end},
+        }, {indent = true}),
+
+        section("grouprolls", {"Gruppenwürfe", "Group rolls"}, {"Eigenes Fenster für Bedarf, Gier und Passen statt des Blizzard-Fensters. Zeigt die Entscheidungen der Gruppe, den Gewinner und einen Verlauf.", "Own window for need, greed and pass instead of the Blizzard window. Shows the group's decisions, the winner and a history."}, "würfel würfeln roll rolls bedarf need gier greed passen pass transmog loot beute gruppe group verlauf history"),
+        toggle("lootRoll", {"Eigenes Würfelfenster für Gruppenbeute", "Own roll window for group loot"}, {"Entscheidungen gehen nur per Klick an das Spiel. Das Blizzard-Fenster ist jederzeit durch Ausschalten zurück.", "Choices only go to the game when you click. Turning this off brings the Blizzard window back at any time."}, {keywords = "würfel würfeln roll bedarf need gier greed loot fenster window gruppenbeute group loot"}),
+        note(lootRollHint, {ref = "lootRollStatus", height = 34, indent = true, color = "gold"}),
+        choice("lootRollResultTime", {"Ergebnis anzeigen", "Show the result"}, {
+            {0, {"Sofort ausblenden", "Hide at once"}}, {3, {seconds(3), seconds(3)}}, {6, {seconds(6), seconds(6)}},
+            {10, {seconds(10), seconds(10)}}, {20, {seconds(20), seconds(20)}}},
+            {parent = "lootRoll", keywords = "ergebnis result dauer duration zeit time würfel roll"}),
+        slider("lootRollScale", {"Größe des Würfelfensters", "Roll window size"}, .6, 1.6, .05, {parent = "lootRoll", format = scaleText, keywords = "skalierung scale größe size würfel roll"}),
+        choice("lootRollGrow", {"Weitere Würfe erscheinen", "More rolls appear"}, {
+            {"down", {"Darunter", "Below"}}, {"up", {"Darüber", "Above"}}},
+            {parent = "lootRoll", keywords = "richtung direction unten oben down up würfel roll"}),
+        toggle("lootRollCompact", {"Alle Würfe kompakt anzeigen", "Show all rolls compact"}, {"Eine Zeile je Wurf statt der großen Karten.", "One line per roll instead of the large cards."}, {parent = "lootRoll", keywords = "kompakt compact klein small würfel roll"}),
+        choice("lootRollHistorySize", {"Verlauf: Anzahl Einträge", "History: number of entries"}, {
+            {20, {"20", "20"}}, {50, {"50", "50"}}, {100, {"100", "100"}}},
+            {parent = "lootRoll", desc = {"Der Verlauf gehört dem Charakter und bleibt auf diesem Rechner.", "The history belongs to the character and stays on this computer."}, keywords = "verlauf history einträge entries würfel roll"}),
+        buttons({
+            {text = {"Vorschau", "Preview"}, width = 130, tip = {"Zeigt erfundene Würfe. Es wird nichts gesendet und nichts gespeichert.", "Shows invented rolls. Nothing is sent and nothing is saved."}, keywords = "vorschau preview demo würfel roll", action = function(v)
+                NS.LootRollDemo.Start()
+                v:SetMessage(tr("Vorschau läuft. Mit /zutil loot test beenden.", "Preview is running. End it with /zutil loot test."))
+            end},
+            {text = {"Fenster verschieben", "Move window"}, width = 170, tip = {"Fenster ziehen, danach erneut klicken.", "Drag the window, then click again."}, keywords = "verschieben move position würfel roll", action = function(v)
+                local cards = NS.LootRollCards
+                cards.SetMoving(not cards.moving)
+                v:SetMessage(cards.moving and tr("Fenster an die gewünschte Stelle ziehen, dann erneut auf „Fenster verschieben“ klicken.", "Drag the window where you want it, then click “Move window” again.") or tr("Position gespeichert.", "Position saved."))
+            end},
+            {text = {"Position zurücksetzen", "Reset position"}, width = 190, action = function(v) NS.LootRollCards.ResetPosition(); v:SetMessage(tr("Position zurückgesetzt.", "Position reset.")) end},
+            {text = {"Verlauf öffnen", "Open history"}, width = 150, keywords = "verlauf history würfel roll", action = function() NS.LootRollHistory.Show() end},
+            {text = {"Verlauf löschen", "Clear history"}, width = 150, action = function(v)
+                C.Confirm(v, tr("Verlauf löschen?", "Clear the history?"),
+                    tr("Alle gespeicherten Würfe dieses Charakters werden entfernt.", "All saved rolls of this character are removed."),
+                    tr("Löschen", "Delete"), function()
+                        NS.LootRoll.ClearHistory()
+                        v:SetMessage(tr("Verlauf gelöscht.", "History cleared."))
+                    end, "danger")
+            end},
         }, {indent = true}),
 
         section("vendor", {"Beim Händler", "At vendors"}, {"Shift beim Öffnen des Händlers überspringt alles einmal.", "Holding Shift while opening the vendor skips everything once."}, "händler vendor merchant"),

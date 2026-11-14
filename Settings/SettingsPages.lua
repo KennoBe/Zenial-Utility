@@ -404,8 +404,11 @@ end
 
 -- One sentence when the roll window is on but cannot take over; empty otherwise.
 local function lootRollHint()
-    if not db().lootRoll then return "" end
     local status = NS.LootRoll.Status()
+    if status == "reload" then
+        return tr("Das Blizzard-Fenster kommt nach /reload zurück. Bis dahin bleibt das Zenial-Fenster zuständig.", "The Blizzard window returns after /reload. Until then the Zenial window stays in charge.")
+    end
+    if not db().lootRoll then return "" end
     if status == "gamepad" then
         return tr("Die Gamepad-Oberfläche ist aktiv. Dort bleibt das Blizzard-Fenster zuständig.", "The gamepad interface is active. The Blizzard window stays in charge there.")
     elseif status == "unsupported" then

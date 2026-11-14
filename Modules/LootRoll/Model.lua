@@ -30,6 +30,11 @@ end
 
 local function ended(roll) return roll.status == "FINISHED" or roll.status == "CANCELLED" end
 
+local function finish(roll, now)
+    roll.status = "FINISHED"
+    roll.finishedAt = roll.finishedAt or now
+end
+
 ----------------------------------------------------------------------
 -- State
 ----------------------------------------------------------------------
@@ -51,17 +56,32 @@ function M.Add(state, rollID, info, now)
     if rollID == nil then return nil end
     if state.rolls[rollID] then return state.rolls[rollID] end
     info = type(info) == "table" and info or {}
-    local left = tonumber(info.timeLeft) or tonumber(info.duration) or 0
+    local duration, timeLeft = tonumber(info.duration), tonumber(info.timeLeft)
+    local left = timeLeft or duration or 0
+    -- A roll read after a loading screen has run for a while already; the age matters for matching drops.
+    local startedAt = (duration and timeLeft and duration >= timeLeft) and (now - (duration - timeLeft)) or now
     local roll = {
         rollID = rollID, link = info.link, itemID = L.LinkItemID(info.link), name = info.name, icon = info.icon,
         count = info.count or 1, quality = info.quality, bop = info.bop == true,
-        startedAt = now, endsAt = now + left, duration = tonumber(info.duration) or left,
+        startedAt = startedAt, endsAt = now + left, duration = duration or left,
         status = "PENDING", allowed = copyFlags(info.allowed), reasons = copyFlags(info.reasons), demo = info.demo == true,
         offers = type(info.offers) == "table" and {unpack(info.offers)} or {1, 2, 0},
         players = {}, isTied = false, allPassed = false,
     }
     state.rolls[rollID] = roll
     state.order[#state.order + 1] = rollID
+    return roll
+end
+
+-- Takes a roll out of the state. `used` stays: the drop it was matched to must not match again.
+function M.Remove(state, rollID)
+    local roll = state.rolls[rollID]
+    if not roll then return nil end
+    state.rolls[rollID] = nil
+    if roll.key and state.keys[roll.key] == rollID then state.keys[roll.key] = nil end
+    for index, id in ipairs(state.order) do
+        if id == rollID then table.remove(state.order, index); break end
+    end
     return roll
 end
 
@@ -73,13 +93,13 @@ function M.Click(state, rollID, action, now)
     if roll.native then return false, "native" end
     if roll.allowed[action] ~= true then return false, "not allowed" end
     if roll.clickedAt and now - roll.clickedAt < M.ClickGap then return false, "too fast" end
-    roll.pendingChoice, roll.clickedAt = action, now
+    roll.pendingChoice, roll.pendingSource, roll.clickedAt = action, "click", now
     return true
 end
 
 function M.ClickFailed(state, rollID)
     local roll = state.rolls[rollID]
-    if roll then roll.pendingChoice = nil end
+    if roll then roll.pendingChoice, roll.pendingSource = nil, nil end
 end
 
 -- `action` is a RollOnLoot action or a kind; the stored choice is always the kind.
@@ -95,22 +115,42 @@ end
 
 -- The client stops offering the roll as soon as the own choice is made; it does not mean the result
 -- is known. The roll stays and waits for the group data.
-local function stopActing(state, roll)
+-- A choice that was only clicked (or only sent by the automation) becomes the own choice only when
+-- the signal comes before the roll time is over: a declined confirmation question leaves the roll open
+-- until it runs out, and that must not look like a choice.
+local function stopActing(state, roll, now, adopt)
     if roll.status ~= "PENDING" then return end
     roll.status = "WAITING"
-    if roll.pendingChoice and not roll.ownChoice then
-        M.NoteOwnChoice(state, roll.rollID, roll.pendingChoice, "click")
+    if adopt and roll.pendingChoice and not roll.ownChoice and now < roll.endsAt - 1 then
+        M.NoteOwnChoice(state, roll.rollID, roll.pendingChoice, roll.pendingSource or "click")
     end
-    roll.pendingChoice = nil
+    roll.pendingChoice, roll.pendingSource = nil, nil
+    -- Group data that arrived while the roll was still open ends it now.
+    if roll.winner or roll.allPassed then finish(roll, now) end
 end
 
 function M.NoLongerActionable(state, rollID, now)
     local roll = state.rolls[rollID]
-    if roll then stopActing(state, roll) end
+    if roll then stopActing(state, roll, now, true) end
 end
 
+-- Never adopts a pending choice: the signal does not say which rolls were chosen.
 function M.CancelAll(state, now)
-    for _, rollID in ipairs(state.order) do stopActing(state, state.rolls[rollID]) end
+    for _, rollID in ipairs(state.order) do stopActing(state, state.rolls[rollID], now, false) end
+end
+
+-- The automation (greed on green) sent a choice without a click. It counts like a click: it is adopted
+-- when the roll stops being offered in time.
+function M.NoteAutoChoice(state, rollID, action, now)
+    local roll = state.rolls[rollID]
+    if not roll or M.ActionKind(action) == "UNKNOWN" then return false end
+    if roll.status == "PENDING" then
+        roll.pendingChoice, roll.pendingSource = action, "auto"
+        return true
+    elseif roll.status == "WAITING" and not roll.ownChoice and now < roll.endsAt - 1 then
+        return M.NoteOwnChoice(state, rollID, action, "auto")
+    end
+    return false
 end
 
 -- Returns the rolls to archive and removes them. Demo rolls come back flagged `demo`.
@@ -134,37 +174,6 @@ function M.Tick(state, now, resultTime)
     return removed
 end
 
-function M.Visible(state, now)
-    local groups = {{}, {}, {}}
-    for index, rollID in ipairs(state.order) do
-        local roll = state.rolls[rollID]
-        if roll then
-            local group = roll.status == "PENDING" and 1 or roll.status == "WAITING" and 2 or 3
-            groups[group][#groups[group] + 1] = {roll = roll, index = index}
-        end
-    end
-    table.sort(groups[1], function(a, b)
-        local left, other = math.max(0, a.roll.endsAt - now), math.max(0, b.roll.endsAt - now)
-        if left ~= other then return left < other end
-        return a.index < b.index
-    end)
-    local out = {}
-    for _, group in ipairs(groups) do
-        for _, item in ipairs(group) do out[#out + 1] = item.roll end
-    end
-    return out
-end
-
--- Nothing is left out: what does not fit as a large card becomes a compact one.
-function M.Layout(rolls, maxLarge)
-    maxLarge = maxLarge or 3
-    local large, compact = {}, {}
-    for index, roll in ipairs(rolls) do
-        if index <= maxLarge then large[#large + 1] = roll else compact[#compact + 1] = roll end
-    end
-    return large, compact
-end
-
 ----------------------------------------------------------------------
 -- Loot history
 ----------------------------------------------------------------------
@@ -183,12 +192,7 @@ function M.NormalizePlayer(info, enum)
         roll = info.roll, isWinner = info.isWinner == true, isSelf = info.isSelf == true}
 end
 
-local function finish(roll, now)
-    roll.status = "FINISHED"
-    roll.finishedAt = roll.finishedAt or now
-end
-
-local function updateFromDrop(state, roll, drop, enum, now)
+local function updateFromDrop(state, roll, drop, enum, now, force)
     local players, winner = {}, M.NormalizePlayer(drop.winner, enum)
     for _, info in ipairs(drop.rollInfos or {}) do
         local player = M.NormalizePlayer(info, enum)
@@ -210,7 +214,8 @@ local function updateFromDrop(state, roll, drop, enum, now)
             M.NoteOwnChoice(state, roll.rollID, player.kind, "history")
         end
     end
-    if winner or roll.allPassed then finish(roll, now) end
+    -- A roll that is still open for me never ends: the client offers it until it is chosen.
+    if (winner or roll.allPassed) and (roll.status ~= "PENDING" or force) then finish(roll, now) end
 end
 
 local function dropKey(encounterID, lootListKey)
@@ -221,7 +226,7 @@ end
 function M.ApplyDropTo(state, rollID, drop, enum, now)
     local roll = state.rolls[rollID]
     if not roll or type(drop) ~= "table" or type(enum) ~= "table" then return false end
-    updateFromDrop(state, roll, drop, enum, now)
+    updateFromDrop(state, roll, drop, enum, now, true)
     return true
 end
 
@@ -235,8 +240,13 @@ local function fractions(roll, drop, now, historyNow)
     return (historyNow - drop.startTime) / drop.duration, (now - roll.startedAt) / roll.duration
 end
 
+-- Can this drop belong to this roll? A drop that is already decided cannot belong to a roll that is
+-- still open for me, and only to a waiting one when the ages were compared and fit.
 local function plausible(roll, drop, now, historyNow)
     local dropShare, rollShare = fractions(roll, drop, now, historyNow)
+    if drop.winner ~= nil or drop.allPassed == true then
+        if roll.status == "PENDING" or dropShare == nil then return false end
+    end
     return dropShare == nil or math.abs(dropShare - rollShare) <= M.MatchTolerance
 end
 
@@ -395,17 +405,6 @@ function M.ParseChat(message, patterns)
     return nil
 end
 
-local function unassigned(state, link)
-    local found = {}
-    for _, rollID in ipairs(state.order) do
-        local roll = state.rolls[rollID]
-        if roll.link == link and not roll.demo and not roll.key and roll.source ~= "history" then
-            found[#found + 1] = roll
-        end
-    end
-    return found
-end
-
 local function findPlayer(roll, name, isSelf)
     for _, player in ipairs(roll.players) do
         if (isSelf and player.isSelf) or (name and player.name == name) then return player end
@@ -415,16 +414,26 @@ local function findPlayer(roll, name, isSelf)
     return player
 end
 
+-- A chat line has no drop key, so it is only used when it can belong to one roll for sure: the
+-- only roll with this link that is not open for me, not matched through the loot history and not
+-- from another encounter. It never touches a roll that is still open.
 function M.ApplyChat(state, event, ownName, now)
     if type(event) ~= "table" or type(event.link) ~= "string" then return false end
-    local candidates = unassigned(state, event.link)
-    if #candidates == 0 then return false end
-    if #candidates > 1 then
-        for _, roll in ipairs(candidates) do roll.match = "ambiguous" end
+    local all = {}
+    for _, rollID in ipairs(state.order) do
+        local roll = state.rolls[rollID]
+        if roll.link == event.link and not roll.demo then all[#all + 1] = roll end
+    end
+    if #all == 0 then return false end
+    if #all > 1 then
+        for _, roll in ipairs(all) do
+            if not roll.key then roll.match = "ambiguous" end
+        end
         return false
     end
-    local roll = candidates[1]
-    if roll.match == "ambiguous" then return false end
+    local roll = all[1]
+    if roll.status ~= "WAITING" or roll.key or roll.source == "history" or roll.match == "ambiguous" then return false end
+    if event.encounterID and roll.encounterID and event.encounterID ~= roll.encounterID then return false end
     roll.match, roll.source = "unique", "chat"
     local name = event.name
     local isSelf = name == nil or (ownName ~= nil and name == ownName)
@@ -541,12 +550,18 @@ function M.Snapshot(state, when, now)
         local roll = state.rolls[rollID]
         if roll and not roll.demo then
             local copy = L.Copy(roll)
-            copy.pendingChoice, copy.clickedAt = nil, nil
+            copy.pendingChoice, copy.pendingSource, copy.clickedAt = nil, nil, nil
             if now then copy.endsAtLeft, copy.startedAgo = roll.endsAt - now, now - roll.startedAt end
             rolls[#rolls + 1] = copy
         end
     end
-    return {t = when, rolls = rolls}
+    -- The drop keys already matched, so an old drop is not taken for a new roll after the reload.
+    local used = {}
+    for key in pairs(state.used or {}) do
+        if #used >= 200 then break end
+        used[#used + 1] = key
+    end
+    return {t = when, rolls = rolls, used = used}
 end
 
 function M.Restore(snapshot, activeIDs, now, when)
@@ -563,19 +578,29 @@ function M.Restore(snapshot, activeIDs, now, when)
                 roll.endsAt, roll.startedAt = now + roll.endsAtLeft, now - (roll.startedAgo or 0)
                 roll.endsAtLeft, roll.startedAgo = nil, nil
             end
-            roll.pendingChoice, roll.clickedAt = nil, nil
+            roll.pendingChoice, roll.pendingSource, roll.clickedAt = nil, nil, nil
             roll.players = type(roll.players) == "table" and roll.players or {}
+            if type(roll.offers) ~= "table" or #roll.offers == 0 then roll.offers = {1, 2, 0} end
             roll.allowed = type(roll.allowed) == "table" and roll.allowed or {}
             roll.reasons = type(roll.reasons) == "table" and roll.reasons or {}
-            if ended(roll) then
-                roll.finishedAt = now
-            else
-                roll.status = activeIDs[roll.rollID] and "PENDING" or "WAITING"
+            -- Broken saved data must not cause an error in the tick.
+            local valid = type(roll.endsAt) == "number" and type(roll.startedAt) == "number" and type(roll.duration) == "number"
+                and (roll.status == "PENDING" or roll.status == "WAITING" or ended(roll)) and type(roll.allowed) == "table"
+            if valid then
+                if ended(roll) then
+                    roll.finishedAt = now
+                else
+                    roll.status = activeIDs[roll.rollID] and "PENDING" or "WAITING"
+                end
+                state.rolls[roll.rollID] = roll
+                state.order[#state.order + 1] = roll.rollID
+                if roll.key then state.keys[roll.key], state.used[roll.key] = roll.rollID, true end
             end
-            state.rolls[roll.rollID] = roll
-            state.order[#state.order + 1] = roll.rollID
-            if roll.key then state.keys[roll.key], state.used[roll.key] = roll.rollID, true end
         end
+    end
+    for index, key in ipairs(type(snapshot.used) == "table" and snapshot.used or {}) do
+        if index > 200 then break end
+        if type(key) == "string" then state.used[key] = true end
     end
     return state
 end

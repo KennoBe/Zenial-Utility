@@ -27,22 +27,13 @@ end
 ----------------------------------------------------------------------
 -- State
 ----------------------------------------------------------------------
-local function remove(roll)
-    local state = R.state
-    state.rolls[roll.rollID] = nil
-    if roll.key and state.keys[roll.key] == roll.rollID then state.keys[roll.key] = nil end
-    for index, rollID in ipairs(state.order) do
-        if rollID == roll.rollID then table.remove(state.order, index); break end
-    end
-end
-
 local function removeWhere(test)
     local doomed = {}
     for _, rollID in ipairs(R.state.order) do
         local roll = R.state.rolls[rollID]
         if roll and test(roll) then doomed[#doomed + 1] = roll end
     end
-    for _, roll in ipairs(doomed) do remove(roll) end
+    for _, roll in ipairs(doomed) do M.Remove(R.state, roll.rollID) end
 end
 
 function R.RemoveDemo() removeWhere(function(roll) return roll.demo end) end
@@ -76,16 +67,24 @@ local function afterWorld()
         end
         store.history = M.RepairHistory(store.history, db().lootRollHistorySize)
     end
-    -- The game opens its own windows for rolls still open after a load; those rolls are its.
-    for rollID in pairs(N.ActiveSet()) do
+    local active = N.ActiveSet()
+    for rollID in pairs(active) do
         if not R.state.rolls[rollID] then
             local info = N.Read(rollID)
             if info then M.Add(R.state, rollID, info, now) end
         end
     end
-    for _, rollID in ipairs(R.state.order) do
-        local roll = R.state.rolls[rollID]
-        if not roll.demo and N.NativeShows(rollID) then roll.native = true end
+    -- The game opens its own windows for the rolls still open after a load, at most four at a time;
+    -- the rest waits in a queue. If it shows any, all open rolls are its.
+    local shown = false
+    for rollID in pairs(active) do
+        if N.NativeShows(rollID) then shown = true; break end
+    end
+    if shown then
+        for rollID in pairs(active) do
+            local roll = R.state.rolls[rollID]
+            if roll and not roll.demo then roll.native = true end
+        end
     end
 end
 
@@ -158,7 +157,7 @@ end
 function R.AutoChoice(rollID, action)
     if not R.active then return end
     if R.state.rolls[rollID] then
-        M.NoteOwnChoice(R.state, rollID, action, "auto")
+        M.NoteAutoChoice(R.state, rollID, action, N.Now())
         R.Update()
     else
         R.autoPending[rollID] = action
@@ -169,28 +168,42 @@ end
 -- Events
 ----------------------------------------------------------------------
 local function started(rollID, rollTime, lootHandle)
-    if not R.active or N.Gamepad() or type(rollID) ~= "number" or not A.Public(rollID) then return end
-    if R.state.rolls[rollID] then return end
+    if not R.active or N.Gamepad() then return end
+    if not A.Public(rollID) or type(rollID) ~= "number" then
+        N.ShowNative(rollID, rollTime)
+        notice("badid", tr("Ein Wurf hatte keine lesbare Kennung und läuft im Blizzard-Fenster.", "A roll had no readable id and runs in the Blizzard window."))
+        return
+    end
     local info = N.Read(rollID, rollTime)
+    local old = R.state.rolls[rollID]
+    -- The same event twice: nothing to do.
+    if old and info and old.status == "PENDING" and old.link == info.link then return end
     if not info then
         N.ShowNative(rollID, rollTime)
         notice("unreadable", tr("Ein Wurf war nicht lesbar und läuft im Blizzard-Fenster.", "A roll could not be read and runs in the Blizzard window."))
         return
+    end
+    -- The client reused the id: the old roll is over, archive it before the new one takes its place.
+    if old then
+        if not old.demo then archive(old) end
+        M.Remove(R.state, rollID)
     end
     local roll = M.Add(R.state, rollID, info, N.Now())
     roll.lootHandle = lootHandle
     roll.rollTimeMs = type(rollTime) == "number" and rollTime or nil
     local auto = R.autoPending[rollID]
     R.autoPending[rollID] = nil
-    if auto then M.NoteOwnChoice(R.state, rollID, auto, "auto") end
+    if auto then M.NoteAutoChoice(R.state, rollID, auto, N.Now()) end
     R.Update()
 end
 
 local function cancelled(rollID)
     if not A.Public(rollID) then return end
+    local roll = R.state.rolls[rollID]
     M.NoLongerActionable(R.state, rollID, N.Now())
-    -- The native window would close its question here; without it the dialog would stay.
-    N.HideConfirm(rollID)
+    -- The native window would close its question here; without it the dialog would stay. Only the
+    -- question of this very roll, and only for a roll of ours.
+    if roll and not roll.native and N.ConfirmVisible(rollID) then N.HideConfirm(rollID) end
     R.Update()
 end
 
@@ -231,12 +244,14 @@ end
 ----------------------------------------------------------------------
 -- Settings
 ----------------------------------------------------------------------
--- "off" | "active" | "gamepad" | "conflict:<name>" | "unsupported"
+-- "off" | "active" | "gamepad" | "conflict:<name>" | "unsupported" | "reload"
+-- "reload": the game's own window was switched off earlier in this session and stays off until /reload,
+-- so the module stays in charge although it is switched off.
 function R.Status()
-    if not wanted() then return "off" end
     local ok, why = N.CanReplace()
-    if ok then return "active" end
-    return why
+    if wanted() then return ok and "active" or why end
+    if N.suppressed then return "reload" end
+    return "off"
 end
 
 -- Created on first use: a module that is off has no frame and no registered event.
@@ -254,32 +269,24 @@ end
 
 function R.SettingsChanged()
     if not db() then return end
-    local status = R.Status()
-    local active = status == "active" and N.Suppress(true)
+    local wantedNow = wanted()
+    local active = wantedNow and N.CanReplace() and N.Suppress()
+    -- Once the game's window is switched off, this module stays in charge until /reload.
+    if not active and N.suppressed then active = true end
     if active then
         R.active = true
         listener():Set(true)
+        if not wantedNow then
+            notice("reload", tr("Loot-Würfe: Das Blizzard-Fenster kommt nach /reload zurück. Bis dahin bleibt das Zenial-Fenster zuständig.",
+                "Loot rolls: the Blizzard window returns after /reload. Until then the Zenial window stays in charge."))
+        end
     else
-        local wasSuppressed = N.suppressed == true
         R.active = false
         if R.listener then R.listener:Set(false) end
-        if wasSuppressed then
-            N.Suppress(false)
-            notice("off", tr("Loot-Würfe: Das Blizzard-Fenster ist wieder zuständig. Ein /reload stellt den Originalzustand vollständig her.",
-                "Loot rolls: the Blizzard window is in charge again. A /reload fully restores the original state."))
-        end
-        -- An open roll would be without a window until its time runs out: the game's own window takes it.
-        local now = N.Now()
-        for _, rollID in ipairs(R.state.order) do
-            local roll = R.state.rolls[rollID]
-            if not roll.demo and roll.status == "PENDING" and not roll.native then
-                local left = N.TimeLeft(rollID) or math.max(0, roll.endsAt - now)
-                N.ShowNative(rollID, math.floor(left * 1000))
-            end
-        end
         -- Real rolls leave with the module; a running demo stays.
         removeWhere(function(roll) return not roll.demo end)
-        if wanted() then
+        if wantedNow then
+            local status = R.Status()
             if status == "unsupported" then
                 notice("unsupported", tr("Loot-Würfe: Dieser Client bietet die nötigen Schnittstellen nicht. Das Blizzard-Fenster bleibt zuständig.",
                     "Loot rolls: this client lacks the needed interfaces. The Blizzard window stays in charge."))

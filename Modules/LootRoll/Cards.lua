@@ -1,5 +1,5 @@
 local _, NS = ...
-local C = {cards = {}, pool = {}, slots = {}, expanded = {}}
+local C = {cards = {}, pool = {}, slots = {}, expanded = {}, heights = {}}
 NS.LootRollCards = C
 local T, A, M, tr = NS.Theme, NS.Adapter, NS.LootRollModel, NS.Text
 
@@ -64,7 +64,8 @@ local function ownText(roll)
     local kind = roll.ownChoice or (roll.pendingChoice and M.ActionKind(roll.pendingChoice))
     if not kind then return nil end
     local text = tr("Du: ", "You: ") .. kindLabel(kind)
-    if roll.ownChoice and roll.ownSource == "auto" then text = text .. tr(" (automatisch)", " (automatic)") end
+    local automatic = roll.ownChoice and roll.ownSource == "auto" or (not roll.ownChoice and roll.pendingSource == "auto")
+    if automatic then text = text .. tr(" (automatisch)", " (automatic)") end
     return text
 end
 
@@ -383,7 +384,7 @@ end
 
 local function releaseAll()
     for rollID in pairs(C.cards) do release(rollID) end
-    C.slots, C.expanded = {}, {}
+    C.slots, C.expanded, C.heights = {}, {}, {}
 end
 
 local function assignSlots(current)
@@ -414,6 +415,7 @@ local function assignSlots(current)
     for rollID in pairs(C.slots) do ordered[#ordered + 1] = rollID end
     table.sort(ordered, function(a, b) return C.slots[a] < C.slots[b] end)
     for index, rollID in ipairs(ordered) do C.slots[rollID] = index end
+    C.heights = {}
 end
 
 function C.Refresh()
@@ -449,7 +451,14 @@ function C.Refresh()
     local y = 0
     for slot = 1, maxSlot do
         local card = bySlot[slot]
-        local height = card and card:GetHeight() or ((slot <= LARGE_SLOTS and not compactAll) and LARGE_H or COMPACT_H)
+        local height
+        if card then
+            height = card:GetHeight()
+            C.heights[slot] = height
+        else
+            -- An empty place keeps the height it last had, e.g. after an opened list, until the gap closes.
+            height = C.heights[slot] or ((slot <= LARGE_SLOTS and not compactAll) and LARGE_H or COMPACT_H)
+        end
         if card then
             card:ClearAllPoints()
             if up then card:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, y)

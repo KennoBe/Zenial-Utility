@@ -93,8 +93,7 @@ end
 
 local function hasGameEvent()
     local game = _G.GameEvent
-    return type(game) == "table" and isFunction(game.RegisterInternalEvent) and isFunction(game.UnregisterInternalEvent)
-        and isFunction(game.HandleStartLootRoll)
+    return type(game) == "table" and isFunction(game.UnregisterInternalEvent) and isFunction(game.HandleStartLootRoll)
 end
 
 -- Whether the module may take the roll windows over, and if not, why.
@@ -106,22 +105,20 @@ function N.CanReplace()
     return true
 end
 
-function N.Suppress(on)
-    on = on == true
-    if on == (N.suppressed == true) then return true end
+-- Switches the game's own roll handler off, once per session. There is no way back inside the
+-- session on purpose: registering a handler from an addon would run every later START_LOOT_ROLL of
+-- the game's code in tainted execution (it lays out a container that holds a protected button), which
+-- risks "action blocked" messages in combat. A /reload restores the original state.
+function N.Suppress()
+    if N.suppressed then return true end
     if not hasGameEvent() then return false end
-    local game = _G.GameEvent
-    local ok
-    if on then
-        ok = pcall(game.UnregisterInternalEvent, "START_LOOT_ROLL")
-    else
-        ok = pcall(game.RegisterInternalEvent, "START_LOOT_ROLL", function(...) _G.GameEvent.HandleStartLootRoll(...) end)
-    end
-    if ok then N.suppressed = on end
+    local ok = pcall(_G.GameEvent.UnregisterInternalEvent, "START_LOOT_ROLL")
+    if ok then N.suppressed = true end
     return ok
 end
 
--- Hands one roll to the game's own window.
+-- Emergency path only (roll not readable, sending failed): this runs the game's own window code from
+-- addon context, which is why it is not used for anything else.
 function N.ShowNative(rollID, rollTimeMs)
     if not hasGameEvent() then return false end
     return (pcall(_G.GameEvent.HandleStartLootRoll, nil, "START_LOOT_ROLL", rollID, rollTimeMs))
@@ -137,6 +134,12 @@ function N.NativeShows(rollID)
         end
     end
     return false
+end
+
+-- Is the bind-on-pickup question of exactly this roll on screen?
+function N.ConfirmVisible(rollID)
+    if not isFunction(_G.StaticPopup_FindVisible) then return false end
+    return A.Call(_G.StaticPopup_FindVisible, "CONFIRM_LOOT_ROLL", rollID) ~= nil
 end
 
 function N.HideConfirm(rollID)

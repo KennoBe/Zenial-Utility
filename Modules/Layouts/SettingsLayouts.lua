@@ -7,7 +7,7 @@ local KINDS = {"ui", "cdm"}
 local KIND_TITLES = {ui = tr("Oberfläche", "Interface"), cdm = tr("Cooldown Manager", "Cooldown Manager")}
 local SOURCES = {preset = tr("Vorlage", "Preset"), own = tr("Eigenes", "Own"), game = tr("Aus dem Spiel", "From the game")}
 -- The raid target star exists in every client; the font has no star glyph.
-local STAR_ON, STAR_OFF = "|TInterface\TargetingFrame\UI-RaidTargetingIcon_1:12:12|t ", ""
+local STAR_ON, STAR_OFF = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:12:12|t ", ""
 
 local function boxColor(key)
     if key == "ActionBar" then return "goldDim" end

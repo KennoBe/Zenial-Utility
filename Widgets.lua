@@ -3,6 +3,35 @@ local W = {}
 NS.Widgets = W
 local T = NS.Theme
 
+-- Utility-local text palette override. Keep the shared Theme.lua in sync with
+-- other addons; only Utility needs these brighter settings colors.
+local function paletteColor(hex)
+    local r, g, b = hex:match("^#(%x%x)(%x%x)(%x%x)$")
+    return {tonumber(r, 16) / 255, tonumber(g, 16) / 255, tonumber(b, 16) / 255, 1}
+end
+T.palette.text = paletteColor("#fbf6e8")
+T.palette.textSoft = paletteColor("#e9e1cc")
+T.palette.dim = paletteColor("#cfc5ad")
+T.palette.muted = paletteColor("#b9af95")
+T.palette.disabledText = paletteColor("#928973")
+T.colors.text = {T.PaletteColor("text")}
+T.colors.muted = {T.PaletteColor("dim")}
+
+function T.Text(parent, value, font, textColor)
+    local f = parent:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
+    f:SetText(value or "")
+    f:SetJustifyH("LEFT")
+    f:SetJustifyV("TOP")
+    local key = textColor or "text"
+    if T.palette[key] then
+        T.Tint(f, "SetTextColor", key)
+    else
+        local c = T.colors[key] or T.colors.surface
+        f:SetTextColor(c[1], c[2], c[3], c[4])
+    end
+    return f
+end
+
 function W.CloseButton(parent, action)
     local ok, button = pcall(CreateFrame, "Button", nil, parent, "UIPanelCloseButton")
     if not ok or type(button) ~= "table" or not button.SetPoint then

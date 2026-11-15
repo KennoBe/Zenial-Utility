@@ -127,9 +127,6 @@ local function createAnchor()
     T.Panel(anchor, "inset")
     anchor.label = T.Text(anchor, tr("Loot-Würfe", "Loot rolls"), "GameFontHighlightSmall", "gold")
     anchor.label:SetPoint("LEFT", 8, 0)
-    anchor.hint = T.Text(anchor, tr("ziehen zum Verschieben", "drag to move"), "GameFontHighlightSmall", "muted")
-    anchor.hint:SetPoint("RIGHT", -8, 0)
-    anchor.hint:SetJustifyH("RIGHT")
     C.anchor = anchor
     place()
     return anchor

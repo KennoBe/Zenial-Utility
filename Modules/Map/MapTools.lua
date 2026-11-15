@@ -100,7 +100,8 @@ function M.Draw(pin)
     local layers = A.Call(api.GetMapArtLayers, mapID)
     if not data or type(layers) ~= "table" then return end
     local container = canvas.GetCanvasContainer and canvas:GetCanvasContainer()
-    local index = container and container.GetCurrentLayerIndex and container:GetCurrentLayerIndex() or 1
+    -- The game's lookup raises until the map was opened once (no zoom levels yet): first layer then.
+    local index = container and A.Call(container.GetCurrentLayerIndex, container) or 1
     local layer = layers[index] or layers[1]
     if not layer then return end
     local exploration = _G.C_MapExplorationInfo

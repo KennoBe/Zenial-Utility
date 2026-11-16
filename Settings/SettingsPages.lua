@@ -298,6 +298,12 @@ U.AddPage({id = "comfort", group = GROUP_SETTINGS, title = {"Spielkomfort", "Eve
         toggle("questTurnIn", {"Fertige Quests automatisch abgeben", "Turn in finished quests automatically"}, {"Nicht bei einer Belohnungswahl oder wenn die Quest Gold kostet.", "Not when you choose a reward or the quest costs gold."}, {keywords = "abgeben turn in complete"}),
         toggle("questRewardValue", {"Händlerwert der Belohnungen anzeigen", "Show the vendor value of rewards"}, {"Hilft bei der Wahl der Belohnung: der wertvollste Gegenstand ist markiert.", "Helps choosing a reward: the most valuable item is marked."}, {keywords = "gold preis price belohnung reward"}),
         toggle("questZoneTrack", {"Gebiets-Häkchen im Questlog", "Zone checkbox in the quest log"}, {"Verfolgt alle Quests eines Gebiets auf einmal, bis zum Limit der Questverfolgung.", "Tracks all quests of a zone at once, up to the tracker's limit."}, {keywords = "tracker verfolgen questlog"}),
+        -- The navigation switch reads and writes the game's own setting; nothing is stored by the addon.
+        toggle(nil, {"Quest-Navigation", "Quest navigation"}, {"Zeigt in der Spielwelt eine Markierung mit Entfernung zum Ziel der verfolgten Quest.", "Shows a marker with the distance to the tracked quest's objective in the game world."},
+            {id = "questNavigation", get = function() return NS.Quests.NavigationOn() end, set = function(on) NS.Quests.SetNavigation(on) end,
+                enabled = function() return NS.Quests.NavigationAvailable() end,
+                parentHint = {"Dieser Client bietet die Einstellung nicht an.", "This client does not offer the setting."},
+                keywords = "navigation wegpunkt waypoint wegweiser markierung marker pfeil arrow entfernung distance showInGameNavigation"}),
 
         section("dialogs", {"NPC-Dialoge und Unterbrechungen", "NPC dialogs and interruptions"}, nil, "gossip dialog"),
         toggle("skipGossip", {"Eindeutige Dienst-Dialoge überspringen", "Skip clear service dialogs"}, {"Öffnet Händler, Flugmeister oder Bank direkt, wenn der NPC nur das anbietet. Ruhestein binden nie.", "Opens the vendor, flight master or bank directly when the NPC offers only that. Never binds the hearthstone."}, {keywords = "gossip händler flugmeister bank skip"}),

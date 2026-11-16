@@ -133,6 +133,26 @@ function Q.UpdateZoneChecks()
 end
 
 ----------------------------------------------------------------------
+-- Quest navigation is the game's own setting (/console showInGameNavigation); nothing is stored here.
+----------------------------------------------------------------------
+local NAVIGATION_CVAR = "showInGameNavigation"
+
+local function navigationValue()
+    local api = _G.C_CVar
+    if type(api) ~= "table" then return nil end
+    return A.Call(api.GetCVar, NAVIGATION_CVAR)
+end
+
+function Q.NavigationAvailable() return navigationValue() ~= nil end
+function Q.NavigationOn() return navigationValue() == "1" end
+
+function Q.SetNavigation(on)
+    local api = _G.C_CVar
+    if type(api) ~= "table" or not Q.NavigationAvailable() then return false end
+    return pcall(api.SetCVar, NAVIGATION_CVAR, on and "1" or "0")
+end
+
+----------------------------------------------------------------------
 function Q.SettingsChanged()
     local data = db()
     if type(hooksecurefunc) == "function" then

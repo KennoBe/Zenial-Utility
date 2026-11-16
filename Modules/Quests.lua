@@ -48,7 +48,8 @@ function Q.ZoneQuests(headerIndex)
     local api = _G.C_QuestLog
     local out = {}
     if not api then return out end
-    local total = tonumber(A.Call(api.GetNumQuestLogEntries)) or 0
+    -- The game returns two values here; the second must not reach tonumber as its base.
+    local total = tonumber((A.Call(api.GetNumQuestLogEntries))) or 0
     for index = headerIndex + 1, total do
         local info = A.Call(api.GetInfo, index)
         if type(info) ~= "table" or info.isHeader then break end

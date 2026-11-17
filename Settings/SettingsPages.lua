@@ -1095,7 +1095,7 @@ function U.RefreshPageData(v)
         for index, entry in ipairs(NS.Helpers.rolls) do
             if index > 6 then break end
             local line = string.format("%d.  %s  ·  %d  (%d–%d)", index, entry.name, entry.roll, entry.low, entry.high)
-            lines[#lines + 1] = won[entry] and ("|cffffd100" .. line .. "|r") or line
+            lines[#lines + 1] = won[entry] and ("|cff" .. T.PaletteHex("gold") .. line .. "|r") or line
         end
         v.rollLabel:SetText(#lines > 0 and table.concat(lines, "\n") or tr("Noch keine Würfe in dieser Runde.", "No rolls in this round yet."))
     elseif v.index == "advanced" and v.playedLabel then

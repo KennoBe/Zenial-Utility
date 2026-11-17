@@ -102,7 +102,7 @@ local function drawCooldown(preview, value)
         table.sort(moved)
         if #moved > 0 then parts[#parts + 1] = table.concat(moved, ", ") end
         if row.alerts > 0 then parts[#parts + 1] = string.format(tr("%d Hinweise", "%d alerts"), row.alerts) end
-        lines[#lines + 1] = "|cffffd100" .. (row.name or "?") .. "|r  ·  " .. Y.SpecText(row.classID, row.spec)
+        lines[#lines + 1] = "|cff" .. T.PaletteHex("gold") .. (row.name or "?") .. "|r  ·  " .. Y.SpecText(row.classID, row.spec)
         lines[#lines + 1] = #parts > 0 and table.concat(parts, "  ·  ") or tr("Ohne Änderungen am Standard", "No changes to the default")
     end
     preview.lines:SetText(table.concat(lines, "\n"))

@@ -316,14 +316,14 @@ local function buildRestock(form, v)
         get = function() return S().auto == true and S().confirm == false end,
         set = function(value) S().auto = value; S().confirm = not value end})
     form:Slider({anchor = "maxCost", label = {"Höchstens pro Händlerbesuch", "At most per vendor visit"}, min = 0, max = 1000, step = 5, parent = enabled,
-        labels = U.StepLabels(0, 1000, 5, function(value) return value == 0 and tr("Kein Limit", "No limit") or (value .. " " .. tr("Gold", "gold")) end),
+        format = function(value) return value == 0 and tr("Kein Limit", "No limit") or (value .. " " .. tr("Gold", "gold")) end,
         get = function() return tonumber(S().maxCost) or 0 end, set = function(value) S().maxCost = value end})
     form:Slider({anchor = "ammoTarget", label = {"Munition: Zielmenge", "Ammo: target amount"}, min = 0, max = 5000, step = 100, parent = enabled,
-        labels = U.StepLabels(0, 5000, 100, function(value) return value == 0 and tr("Nicht kaufen", "Do not buy") or tostring(value) end),
+        format = function(value) return value == 0 and tr("Nicht kaufen", "Do not buy") or tostring(value) end,
         get = function() return tonumber(S().ammoTarget) or 0 end, set = function(value) S().ammoTarget = value end})
     if A.PlayerClass() == "ROGUE" then
         form:Slider({anchor = "poisonStop", label = {"Keine Giftzutaten ab so vielen Giften", "No poison ingredients from this many poisons"}, min = 0, max = 200, step = 5, parent = enabled,
-            labels = U.StepLabels(0, 200, 5, function(value) return value == 0 and tr("Immer kaufen", "Always buy") or tostring(value) end),
+            format = function(value) return value == 0 and tr("Immer kaufen", "Always buy") or tostring(value) end,
             get = function() return tonumber(S().poisonStop) or 0 end, set = function(value) S().poisonStop = value end})
     end
     form:Note({text = {"Zielmengen je Reagenz (0 = nicht kaufen). In Klammern: was du gerade dabei hast.", "Target amount per reagent (0 = do not buy). In brackets: what you carry right now."}})

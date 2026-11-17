@@ -41,7 +41,6 @@ Modules\LootFeed.lua
 Modules\LootRoll\Model.lua
 Modules\Layouts\LayoutPresets.lua
 Modules\Layouts\Layouts.lua
-Widgets.lua
 Modules\Reminders\WarnBars.lua
 Modules\RollWindow.lua
 Modules\LootRoll\Native.lua

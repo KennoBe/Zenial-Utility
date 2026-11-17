@@ -1,7 +1,7 @@
 local _, NS = ...
 local B = {frames = {}, moving = false, preview = false}
 NS.WarnBars = B
-local A, L, T, tr, W = NS.Adapter, NS.Logic, NS.Theme, NS.Text, NS.Widgets
+local A, L, T, tr = NS.Adapter, NS.Logic, NS.Theme, NS.Text
 
 local GAP = 4
 local STATE_COLOR = {missing = "danger", expiring = "gold", rank = "accentBlue", group = "online"}

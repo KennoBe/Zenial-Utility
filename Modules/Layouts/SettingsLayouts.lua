@@ -1,6 +1,7 @@
 local _, NS = ...
 local U = NS.SettingsUI
-local T, tr, W, Y = NS.Theme, NS.Text, NS.Widgets, NS.Layouts
+local T, tr, Y = NS.Theme, NS.Text, NS.Layouts
+local Form = NS.Form
 
 local ROW_HEIGHT, MAX_ROWS, ICON_COUNT = 36, 14, 12
 local KINDS = {"ui", "cdm"}
@@ -270,10 +271,10 @@ function U.fixed.layouts(v, page)
     editRow:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -40)
     editRow:SetPoint("RIGHT", view, "RIGHT", 0, 0)
     editRow:SetHeight(64)
-    local nameEdit = W.Edit(editRow, 0, 0, 140, nil)
+    local nameEdit = Form.Edit(editRow, {width = 140})
+    nameEdit:SetPoint("TOPLEFT", editRow, "TOPLEFT", 0, 0)
     nameEdit:SetMaxLetters(Y.MaxName)
-    local descEdit = W.Edit(editRow, 146, 0, 120, nil)
-    descEdit:ClearAllPoints()
+    local descEdit = Form.Edit(editRow, {width = 120})
     descEdit:SetPoint("TOPLEFT", 146, 0)
     descEdit:SetPoint("RIGHT", editRow, "RIGHT", -96, 0)
     descEdit:SetMaxLetters(Y.MaxDescription)
@@ -299,7 +300,7 @@ function U.fixed.layouts(v, page)
         if state.selected and Y.ToggleFavorite(state.selected) then v:RenderLayouts() end
     end, "secondary")
     v.layoutFavorite:SetPoint("TOPLEFT", 0, 0)
-    local export = W.Edit(view, 0, 0, 200, nil)
+    local export = Form.Edit(view, {width = 200})
     export:SetMaxLetters(0)
     export:ClearAllPoints()
     export:SetPoint("TOPLEFT", actions, "BOTTOMLEFT", 0, -8)
@@ -353,8 +354,7 @@ function U.fixed.layouts(v, page)
         local text = T.Text(add, label, "GameFontHighlightSmall", "text")
         text:SetPoint("TOPLEFT", 0, y)
         U.Note(v, label)
-        local edit = W.Edit(add, 0, y - 16, 200, nil)
-        edit:ClearAllPoints()
+        local edit = Form.Edit(add, {width = 200})
         edit:SetPoint("TOPLEFT", 0, y - 16)
         edit:SetPoint("RIGHT", add, "RIGHT", 0, 0)
         return edit

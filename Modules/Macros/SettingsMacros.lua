@@ -1,6 +1,7 @@
 local _, NS = ...
 local U = NS.SettingsUI
-local T, tr, A, W, M = NS.Theme, NS.Text, NS.Adapter, NS.Widgets, NS.Macros
+local T, tr, A, M = NS.Theme, NS.Text, NS.Adapter, NS.Macros
+local Form = NS.Form
 
 local ROW_HEIGHT, MAX_ROWS = 38, 14
 local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_Note_01"
@@ -53,13 +54,21 @@ function U.fixed.macros(v, page)
     for _, key in ipairs(M.ClassOrder) do classes[#classes + 1] = {key, M.ClassName(key)} end
     local categories = {{"ALL", tr("Alle Kategorien", "All categories")}}
     for _, key in ipairs(M.CategoryOrder) do categories[#categories + 1] = {key, M.CategoryName(key)} end
-    v:Dropdown(page, "macroClass", 0, 0, 150, classes, function() return state.class end, function(value) state.class = value; state.offset = 0 end)
-    v:Dropdown(page, "macroCategory", 156, 0, 170, categories, function() return state.cat end, function(value) state.cat = value; state.offset = 0 end)
-    local search = W.Edit(page, 334, 0, 190, function(value) state.text = value; state.offset = 0; v:RenderMacros() end)
+    -- The filters are free-standing fields of the shared Form; a choice shows the list again.
+    local function filter(key, x, width, options, field)
+        local box = Form.Dropdown(page, {width = width, options = options,
+            get = function() return state[field] end,
+            set = function(value) state[field] = value; state.offset = 0; v:RenderMacros() end})
+        box:SetPoint("TOPLEFT", page, "TOPLEFT", x, 0)
+        v.controls[key] = box
+        v:AddUpdate(function() box:Refresh() end)
+    end
+    filter("macroClass", 0, 150, classes, "class")
+    filter("macroCategory", 156, 170, categories, "cat")
+    local search = Form.Edit(page, {width = 190, live = true, maxLetters = 120, placeholder = tr("Makro suchen …", "Search macros …"),
+        set = function(value) state.text = value; state.offset = 0; v:RenderMacros() end})
+    search:SetPoint("TOPLEFT", page, "TOPLEFT", 334, 0)
     v.macroSearch = search
-    local hint = T.Text(search, tr("Makro suchen …", "Search macros …"), "GameFontHighlightSmall", "muted")
-    hint:SetPoint("LEFT", 8, 0)
-    search:HookScript("OnTextChanged", function(self) hint:SetShown(self:GetText() == "") end)
 
     local known = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
     known:SetSize(22, 22)
@@ -153,11 +162,14 @@ function U.fixed.macros(v, page)
         row:SetPoint("RIGHT", detail, "RIGHT", -14, 0)
         row.label = T.Text(row, "", "GameFontHighlightSmall", "text")
         row.label:SetPoint("TOPLEFT", 0, 0)
-        row.edit = W.Edit(row, 0, -16, 300, function(value)
-            db().macroInputs[row.key] = value
-            state.armed = nil
-            v:RenderMacroDetail()
-        end)
+        row.edit = Form.Edit(row, {width = 300, live = true, maxLetters = 120,
+            get = function() return db().macroInputs[row.key] or "" end,
+            set = function(value)
+                db().macroInputs[row.key] = value
+                state.armed = nil
+                v:RenderMacroDetail()
+            end})
+        row.edit:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -16)
         row:Hide()
         inputs[index] = row
     end
@@ -167,8 +179,12 @@ function U.fixed.macros(v, page)
     footer:SetPoint("BOTTOMLEFT", 14, 10)
     footer:SetPoint("BOTTOMRIGHT", -14, 10)
     footer:SetHeight(62)
-    v:Dropdown(footer, "macroScope", 0, 0, 200, {{"account", tr("Für alle Charaktere", "For all characters")}, {"character", tr("Nur dieser Charakter", "This character only")}},
-        function() return state.scope end, function(value) state.scope = value; state.armed = nil end)
+    local scope = Form.Dropdown(footer, {width = 200,
+        options = {{"account", tr("Für alle Charaktere", "For all characters")}, {"character", tr("Nur dieser Charakter", "This character only")}},
+        get = function() return state.scope end, set = function(value) state.scope = value; state.armed = nil end})
+    scope:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, 0)
+    v.controls.macroScope = scope
+    v:AddUpdate(function() scope:Refresh() end)
     v.macroImport = T.Button(footer, tr("Makro erstellen", "Create macro"), 170, 28, function() v:ImportMacro() end, "primary")
     v.macroImport:SetPoint("TOPLEFT", 0, -32)
     NS.Form.Tooltip(v.macroImport, tr("Makro erstellen", "Create macro"), tr("Legt das Makro im Makrofenster des Spiels an. Gibt es den Namen schon, fragt der Button einmal nach, bevor er ersetzt.", "Creates the macro in the game's macro window. If the name exists, the button asks once before replacing it."))
@@ -214,8 +230,8 @@ function U.fixed.macros(v, page)
             if key then
                 row.label:SetText(M.InputName(key))
                 if row.edit.lastKey ~= key then
-                    row.edit:SetText(db().macroInputs[key] or "")
                     row.edit.lastKey = key
+                    row.edit:Refresh()
                 end
                 row:Show()
             else

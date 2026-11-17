@@ -5,7 +5,7 @@ local _, NS = ...
 -- on a fixed page. What each page contains is declared in SettingsPages.lua.
 local U = {views = {}, builders = {}, fixed = {}, Pages = {}, ById = {}, Order = {}, Titles = {}, KeyTitles = {}}
 NS.SettingsUI = U
-local T, K, tr, A, W = NS.Theme, NS.Kit, NS.Text, NS.Adapter, NS.Widgets
+local T, tr, A = NS.Theme, NS.Text, NS.Adapter
 local Window, Form = NS.Window, NS.Form
 
 -- Old page names keep working for /zutil <page> and for links from other addons.
@@ -115,20 +115,6 @@ end
 ----------------------------------------------------------------------
 -- Rows: every setting node of a page becomes a row of the shared Form
 ----------------------------------------------------------------------
--- A slider whose text is a function of its value gets one text per step: the Form shows `labels[value]`.
--- A value off the step grid (older saved values) is looked up rounded to the grid.
-function U.StepLabels(low, high, step, format)
-    local labels = {}
-    if type(high) == "function" then high = high() end
-    for index = 0, math.floor((high - low) / step + 1e-6) do
-        local value = tonumber(string.format("%.8g", low + index * step))
-        labels[value] = format(value)
-    end
-    return setmetatable(labels, {__index = function(list, value)
-        if type(value) == "number" then return rawget(list, tonumber(string.format("%.8g", value))) end
-    end})
-end
-
 local function rowSpec(node)
     local spec = {
         key = node.key, anchor = node.id or node.key, label = node.title, desc = node.desc, tip = node.tip,
@@ -164,7 +150,7 @@ local function render(form, host, def)
         elseif kind == "slider" then
             local spec = rowSpec(node)
             spec.min, spec.max, spec.step = node.min, node.max, node.step
-            if type(node.format) == "function" then spec.labels = U.StepLabels(node.min, node.max, node.step, node.format) else spec.suffix = node.suffix end
+            if type(node.format) == "function" then spec.format = node.format else spec.suffix = node.suffix end
             form:Slider(spec)
         elseif kind == "choice" then
             local spec = rowSpec(node)
@@ -219,10 +205,11 @@ local function newContext()
     }
 end
 
+-- The note on the right of the status line.
 local function refreshHint(host)
-    local hint = host.hint
-    if not hint then return end
-    hint:SetText(A.Combat() and tr("Im Kampf sind einige Aktionen gesperrt.", "Some actions are locked in combat.")
+    local window = host.window
+    if not window then return end
+    window:SetNote(A.Combat() and tr("Im Kampf sind einige Aktionen gesperrt.", "Some actions are locked in combat.")
         or tr("Änderungen werden sofort gespeichert.", "Changes are saved immediately."))
 end
 
@@ -257,21 +244,16 @@ local function buildPage(host, def, page, view)
 end
 
 ----------------------------------------------------------------------
--- Search box: in the top bar of the own window, in the footer of the embedded view. Hits jump to the row.
+-- Search box: the header area of the window (top bar of the own window, status line of the embedded view). Hits
+-- jump to the row; the hit list opens downwards in the top bar and upwards in the status line.
 ----------------------------------------------------------------------
-local FOOTER_HINT_WIDTH = 260
-
-local function buildSearch(host, frame, embedded)
-    local search = W.Edit(frame, 0, 0, 260, function(text) U.ShowSearch(host, text) end)
-    search:ClearAllPoints()
-    if embedded then
-        -- Same line as the status and the hint at the bottom of the view: no row of its own.
-        search:SetSize(200, 24)
-        search:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(T.space.lg + 90 + T.space.sm + FOOTER_HINT_WIDTH + T.space.sm), 3)
-    else
-        search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -1)
-    end
-    NS.Form.Tooltip(search, tr("Einstellungen suchen", "Search settings"),
+local function buildSearch(host, frame, view)
+    local embedded = view.embedded
+    local search = Form.Edit(frame, {width = frame:GetWidth(), live = true, maxLetters = 120,
+        placeholder = tr("Einstellung suchen …", "Search settings …"),
+        set = function(text) U.ShowSearch(host, text) end})
+    search:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+    Form.Tooltip(search, tr("Einstellungen suchen", "Search settings"),
         tr("Durchsucht alle Seiten, auf Deutsch und Englisch. Enter öffnet den ersten Treffer.", "Searches every page, in German and English. Enter opens the first match."))
     search:SetScript("OnEnterPressed", function(self)
         local first = host.searchResults.rows[1]
@@ -280,8 +262,6 @@ local function buildSearch(host, frame, embedded)
     end)
     search:SetScript("OnEscapePressed", function(self) self:SetText(""); U.ShowSearch(host, ""); self:ClearFocus() end)
     host.search = search
-    host.searchHint = T.Text(search, tr("Einstellung suchen …", "Search settings …"), "GameFontHighlightSmall", "muted")
-    host.searchHint:SetPoint("LEFT", 8, 0)
     local results = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
     results:SetSize(420, 40)
     if embedded then
@@ -299,7 +279,6 @@ local function buildSearch(host, frame, embedded)
         local row = T.Button(results, "", 404, 26, function(self)
             results:Hide()
             host.search:SetText("")
-            host.searchHint:Show()
             host:Jump(self.page, self.anchor)
         end, "secondary")
         row:SetPoint("TOPLEFT", 8, -6 - (index - 1) * 28)
@@ -321,7 +300,6 @@ local function buildSearch(host, frame, embedded)
 end
 
 function U.ShowSearch(host, text)
-    host.searchHint:SetShown(text == "")
     local results = host.searchResults
     local query = (text or ""):match("^%s*(.-)%s*$")
     if query == "" then results:Hide(); return end
@@ -384,7 +362,7 @@ local function windowSpec(host, embedded)
     return {
         name = not embedded and "ZenialUtilitySettings" or nil, label = "Utility", version = version, tr = pick, pages = pages,
         position = not embedded and {load = loadPosition, save = savePosition} or nil,
-        header = not embedded and function(frame) buildSearch(host, frame, false) end or nil,
+        header = function(frame, view) buildSearch(host, frame, view) end,
         onPage = function(key) host.index = key end,
         onLeave = function() host:CloseTransient() end,
         onHide = function() host:CloseTransient() end,
@@ -395,18 +373,6 @@ function U.Create(parent, embedded)
     local host = newHost(embedded)
     local view = Window.New(windowSpec(host, embedded), embedded and parent or nil)
     host.window, host.frame = view, view.frame
-    -- The note on the right of the footer line; the status line of the window keeps the room left of it.
-    if embedded then buildSearch(host, view.frame, true) end
-    host.hint = K.Text(view.frame, "", "caption", "muted")
-    host.hint:SetSize(FOOTER_HINT_WIDTH, 12)
-    host.hint:SetJustifyH("RIGHT")
-    host.hint:SetPoint("BOTTOMRIGHT", view.frame, "BOTTOMRIGHT", embedded and -(T.space.lg + 90 + T.space.sm) or -T.space.lg, 9)
-    local layout = view.Layout
-    function view:Layout()
-        layout(self)
-        self.status:SetWidth(math.max(100, (self.areaWidth or 690) - FOOTER_HINT_WIDTH - 2 * T.space.lg - (embedded and 216 or 0)))
-    end
-    view:Layout()
     refreshHint(host)
     U.views[#U.views + 1] = host
     if embedded then view:SelectPage("overview") end

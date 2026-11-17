@@ -329,11 +329,15 @@ end
 ----------------------------------------------------------------------
 
 local function newHost(embedded)
-    -- The wizard base only supplies the dropdown and update list that the list pages draw with.
-    local host = NS.ConfigWizard.New({store = {}})
-    host.embedded = embedded
-    host.index = nil
-    host.draft = nil
+    -- What the pages draw with: a list of update functions per page, the popups of the view and the controls by key.
+    local host = {embedded = embedded, updates = {}, popups = {}, controls = {}}
+    function host:AddUpdate(fn)
+        local list = self.updates[self.index]; list[#list + 1] = fn; fn()
+    end
+    function host:ClosePopups()
+        for _, popup in ipairs(self.popups) do popup:Hide() end
+    end
+    function host:CloseTransient() self:ClosePopups() end
     function host:Changed() NS.App:Changed() end
     function host:SetMessage(message) if self.window then self.window:SetStatus(message or "") end end
     function host:SelectPage(id) return self.window:SelectPage(U.Resolve(id) or "overview") end

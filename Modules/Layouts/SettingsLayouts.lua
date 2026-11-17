@@ -277,8 +277,8 @@ function U.fixed.layouts(v, page)
     descEdit:SetPoint("TOPLEFT", 146, 0)
     descEdit:SetPoint("RIGHT", editRow, "RIGHT", -96, 0)
     descEdit:SetMaxLetters(Y.MaxDescription)
-    W.Tooltip(nameEdit, tr("Name", "Name"))
-    W.Tooltip(descEdit, tr("Beschreibung", "Description"))
+    NS.Form.Tooltip(nameEdit, tr("Name", "Name"))
+    NS.Form.Tooltip(descEdit, tr("Beschreibung", "Description"))
     local save = T.Button(editRow, tr("Speichern", "Save"), 90, 26, function()
         local id = tonumber((state.selected or ""):match("^own:(%d+)$"))
         if id and Y.Rename(id, nameEdit:GetText()) and Y.Describe(id, descEdit:GetText()) then
@@ -390,7 +390,7 @@ function U.fixed.layouts(v, page)
         v:RenderLayouts()
     end, "secondary")
     fromGame:SetPoint("TOPLEFT", 0, -250)
-    W.Tooltip(fromGame, tr("Aus dem Spiel übernehmen", "Take over from the game"),
+    NS.Form.Tooltip(fromGame, tr("Aus dem Spiel übernehmen", "Take over from the game"),
         tr("Liest deine gespeicherten Layouts nur aus. Im Spiel wird nichts geändert.", "Only reads your saved layouts. Nothing changes in the game."))
     v.layoutFromGame = fromGame
     local cancel = T.Button(add, tr("Abbrechen", "Cancel"), 110, 28, function() state.mode = "view"; v:RenderLayouts() end, "secondary")

@@ -1,12 +1,14 @@
 local _, NS = ...
 local H = {filter = "all", rows = {}}
 NS.LootRollHistory = H
-local T, W, A, L, M, tr = NS.Theme, NS.Widgets, NS.Adapter, NS.Logic, NS.LootRollModel, NS.Text
+local T, A, L, M, tr = NS.Theme, NS.Adapter, NS.Logic, NS.LootRollModel, NS.Text
 
 -- The finished rolls of this character, newest first. The window only reads the history and sends
 -- nothing: no roll choice, no chat line. A shift click puts the item link into the chat input.
 
-local WIDTH, HEIGHT, ROW_HEIGHT = 580, 440, 22
+local HEIGHT, ROW_HEIGHT = 440, 22
+-- The page of the shared window is 690 wide; the scroll rail takes 16 of it.
+local WIDTH = NS.Window.metrics.pageWidth - 16
 local CONFIRM_SECONDS = 4
 local FILTERS = {
     {"all", {"Alle", "All"}}, {"won", {"Gewonnen", "Won"}}, {"need", {"Bedarf", "Need"}}, {"greed", {"Gier", "Greed"}},
@@ -17,14 +19,16 @@ local function kindLabel(kind)
     return cards and cards.KindLabel(kind) or tostring(kind or "?")
 end
 
-local function place(f)
+-- The window position is saved by the shared window. Older saves hold only the left and top edge.
+local function loadPosition()
     local saved = NS.Characters.Data("lootRoll").window
-    f:ClearAllPoints()
-    if type(saved) == "table" and type(saved.x) == "number" and type(saved.y) == "number" then
-        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
-    else
-        f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
-    end
+    if type(saved) ~= "table" then return nil end
+    if type(saved.point) == "string" then return saved.point, saved.relative, saved.x, saved.y end
+    if type(saved.x) == "number" and type(saved.y) == "number" then return "TOPLEFT", "BOTTOMLEFT", saved.x, saved.y end
+end
+
+local function savePosition(point, relative, x, y)
+    NS.Characters.Data("lootRoll").window = {point = point, relative = relative, x = x, y = y}
 end
 
 local function itemText(entry)
@@ -77,7 +81,7 @@ local function createRow(f, index)
     row.own = T.Text(row, "", "GameFontHighlightSmall", "dim")
     row.own:SetPoint("LEFT", 252, 0); row.own:SetWidth(64); row.own:SetWordWrap(false)
     row.result = T.Text(row, "", "GameFontHighlightSmall", "text")
-    row.result:SetPoint("LEFT", 320, 0); row.result:SetWidth(WIDTH - 14 - 36 - 320 - 4); row.result:SetWordWrap(false)
+    row.result:SetPoint("LEFT", 320, 0); row.result:SetWidth(WIDTH - 320 - 4); row.result:SetWordWrap(false)
     row:SetScript("OnEnter", showTip)
     row:SetScript("OnLeave", function()
         local tip = _G.GameTooltip
@@ -90,75 +94,65 @@ local function createRow(f, index)
     return row
 end
 
-local function create()
-    local f = CreateFrame("Frame", "ZenialUtilityLootRollHistory", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    f:SetSize(WIDTH, HEIGHT)
-    f:SetFrameStrata("DIALOG")
-    f:SetClampedToScreen(true)
-    f:EnableMouse(true)
-    f:SetMovable(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        if self.GetLeft and self.GetTop then
-            NS.Characters.Data("lootRoll").window = {x = self:GetLeft(), y = self:GetTop()}
-            place(self)
-        end
-    end)
-    T.Panel(f, "surface")
-    f.rows = H.rows
+local function windowTitle()
+    local name = A.Call(_G.UnitName, "player")
+    return tr("Loot-Würfe: Verlauf", "Loot rolls: history") .. (type(name) == "string" and (" - " .. name) or "")
+end
 
-    f.title = T.Text(f, "", "GameFontNormal", "gold")
-    f.title:SetPoint("TOPLEFT", 14, -14)
-    f.title:SetWidth(WIDTH - 60)
-    f.title:SetWordWrap(false)
-    local close = W.CloseButton(f, function() f:Hide() end)
-    close:SetSize(26, 26)
-
+-- The content of the page: filters, list, clear button and count.
+local function buildPage(f, host)
     f.filters = {}
     for index, spec in ipairs(FILTERS) do
-        local button = T.Button(f, NS.SettingsControls.Pick(spec[2]), 100, 24, function()
+        local button = T.Button(host, NS.SettingsControls.Pick(spec[2]), 100, 24, function()
             H.filter = spec[1]
             H.Refresh()
         end, "secondary")
-        button:SetPoint("TOPLEFT", 14 + (index - 1) * 106, -42)
+        button:SetPoint("TOPLEFT", (index - 1) * 106, 0)
         button.filter = spec[1]
         f.filters[index] = button
     end
 
-    local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", 14, -76)
-    scroll:SetPoint("BOTTOMRIGHT", -36, 50)
+    local scroll, content = NS.Window.ScrollArea(host, WIDTH)
+    scroll:SetPoint("TOPLEFT", 0, -34)
+    scroll:SetPoint("BOTTOMLEFT", 0, 40)
     f.scroll = scroll
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(WIDTH - 50, ROW_HEIGHT)
-    scroll:SetScrollChild(content)
+    content:SetHeight(ROW_HEIGHT)
     f.content = content
-    W.ScrollBar(scroll, ROW_HEIGHT * 3)
     f.empty = T.Text(content, "", "GameFontHighlightSmall", "muted")
     f.empty:SetPoint("TOPLEFT", 4, -4)
-    f.empty:SetWidth(WIDTH - 60)
+    f.empty:SetWidth(WIDTH - 10)
 
-    f.clear = T.Button(f, tr("Verlauf löschen", "Clear history"), 170, 26, function() H.Clear() end, "danger")
-    f.clear:SetPoint("BOTTOMLEFT", 12, 12)
-    f.count = T.Text(f, "", "GameFontHighlightSmall", "muted")
-    f.count:SetPoint("BOTTOMRIGHT", -16, 18)
+    f.clear = T.Button(host, tr("Verlauf löschen", "Clear history"), 170, 26, function() H.Clear() end, "danger")
+    f.clear:SetPoint("BOTTOMLEFT", 0, 4)
+    f.count = T.Text(host, "", "GameFontHighlightSmall", "muted")
+    f.count:SetPoint("BOTTOMRIGHT", -16, 10)
     f.count:SetJustifyH("RIGHT")
     f.count:SetWidth(240)
+end
 
-    place(f)
-    f:SetScript("OnHide", function() H.Disarm() end)
-    if _G.UISpecialFrames then table.insert(_G.UISpecialFrames, "ZenialUtilityLootRollHistory") end
-    f:Hide()
+local function create()
+    local f
+    local view = NS.Window.New({
+        name = "ZenialUtilityLootRollHistory", label = "Utility", tr = NS.SettingsControls.Pick, height = HEIGHT,
+        version = function()
+            local value = A.Call(_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata, "ZenialUtility", "Version")
+            return type(value) == "string" and value or nil
+        end,
+        position = {load = loadPosition, save = savePosition},
+        onHide = function() H.Disarm() end,
+        pages = {{key = "history", title = windowTitle, fixed = true, build = function(page) buildPage(f, page.frame) end}},
+    })
+    f = view.frame
+    f.title = view.title
+    f.rows = H.rows
+    view:SelectPage("history")
     H.frame = f
 end
 
 function H.Refresh()
     local f = H.frame
     if not f or not f:IsShown() then return end
-    local name = A.Call(_G.UnitName, "player")
-    f.title:SetText(tr("Loot-Würfe: Verlauf", "Loot rolls: history") .. (type(name) == "string" and (" - " .. name) or ""))
+    f.title:SetText(windowTitle())
     for _, button in ipairs(f.filters) do T.StyleButton(button, button.filter == H.filter and "primary" or "secondary") end
     local all = NS.LootRoll.History()
     local list = M.Filter(all, H.filter)

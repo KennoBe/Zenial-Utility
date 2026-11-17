@@ -171,14 +171,14 @@ function U.fixed.macros(v, page)
         function() return state.scope end, function(value) state.scope = value; state.armed = nil end)
     v.macroImport = T.Button(footer, tr("Makro erstellen", "Create macro"), 170, 28, function() v:ImportMacro() end, "primary")
     v.macroImport:SetPoint("TOPLEFT", 0, -32)
-    W.Tooltip(v.macroImport, tr("Makro erstellen", "Create macro"), tr("Legt das Makro im Makrofenster des Spiels an. Gibt es den Namen schon, fragt der Button einmal nach, bevor er ersetzt.", "Creates the macro in the game's macro window. If the name exists, the button asks once before replacing it."))
+    NS.Form.Tooltip(v.macroImport, tr("Makro erstellen", "Create macro"), tr("Legt das Makro im Makrofenster des Spiels an. Gibt es den Namen schon, fragt der Button einmal nach, bevor er ersetzt.", "Creates the macro in the game's macro window. If the name exists, the button asks once before replacing it."))
     v.macroPickup = T.Button(footer, tr("Auf Leiste ziehen", "Drag to bar"), 160, 28, function()
         local name = state.selected and M.ShortName(state.selected)
         local index = name and A.Call(GetMacroIndexByName, name)
         if type(index) == "number" and index > 0 and not A.Combat() then A.Call(PickupMacro, index) end
     end, "secondary")
     v.macroPickup:SetPoint("TOPLEFT", 176, -32)
-    W.Tooltip(v.macroPickup, tr("Auf Leiste ziehen", "Drag to bar"), tr("Legt das Makro auf den Mauszeiger, damit du es auf eine Aktionsleiste ziehen kannst.", "Puts the macro on the cursor so you can drop it on an action bar."))
+    NS.Form.Tooltip(v.macroPickup, tr("Auf Leiste ziehen", "Drag to bar"), tr("Legt das Makro auf den Mauszeiger, damit du es auf eine Aktionsleiste ziehen kannst.", "Puts the macro on the cursor so you can drop it on an action bar."))
 
     function v:ImportMacro()
         local entry = state.selected

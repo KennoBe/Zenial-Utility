@@ -110,7 +110,7 @@ local function headerCheck(header)
         Q.SetZoneTracked(header.questLogIndex, self:GetChecked() == true)
         Q.UpdateZoneChecks()
     end)
-    NS.Widgets.Tooltip(check, tr("Gebiet verfolgen", "Track zone"),
+    NS.Form.Tooltip(check, tr("Gebiet verfolgen", "Track zone"),
         tr("Verfolgt alle Quests dieses Gebiets oder entfernt sie wieder.", "Tracks all quests of this zone or removes them again."))
     header.zenialCheck = check
     return check

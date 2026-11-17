@@ -7,7 +7,7 @@ local _, NS = ...
 -- Node kinds: section, toggle, slider, choice, buttons, note, custom (free layout), space.
 local U = NS.SettingsUI
 local C = NS.SettingsControls
-local T, tr, L, A, W = NS.Theme, NS.Text, NS.Logic, NS.Adapter, NS.Widgets
+local T, tr, L, A = NS.Theme, NS.Text, NS.Logic, NS.Adapter
 
 local function db() return NS.App.db end
 local pick = C.Pick
@@ -54,16 +54,15 @@ local GROUP_MORE = {"Sonstiges", "More"}
 ----------------------------------------------------------------------
 -- Shared small pieces
 ----------------------------------------------------------------------
-local function row(form, height) local y = form.y; form.y = form.y - height; return y end
-
--- A list row with a label and buttons on the right, filled later by a refresh function.
-local function listRow(v, p, y, actions, width)
-    local frame = CreateFrame("Frame", nil, p)
-    frame:SetSize(width or C.Width, 28)
-    frame:SetPoint("TOPLEFT", 0, y)
+-- A list row with a label and buttons on the right, filled later by a refresh function. It sits in the frame of a
+-- Form:Custom row.
+local function listRow(v, parent, actions, width)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(width, 28)
+    frame:SetPoint("TOPLEFT", 0, -1)
     frame.label = T.Text(frame, "", "GameFontHighlightSmall", "text")
     frame.label:SetPoint("LEFT", 4, 0)
-    frame.label:SetWidth((width or C.Width) - #actions * 152 - 8)
+    frame.label:SetWidth(width - #actions * 152 - 8)
     frame.label:SetWordWrap(false)
     local right = 0
     for index = #actions, 1, -1 do
@@ -166,106 +165,70 @@ end
 
 local function setupDone() return type(db().setup) == "table" and db().setup.complete == true end
 
-local function buildOverview(form, v, p)
-    local width = C.Width
-    -- Profile and how many quick switches are on.
-    local status = form:Note({text = function()
+local function buildOverview(form, v)
+    -- First setup: offered prominently until the wizard was finished or skipped once.
+    form:Card({"Erste Schritte", "First steps"}, {"Der Einrichtungsassistent führt in wenigen Schritten durch die wichtigsten Helfer. Deine Einstellungen bleiben, bis du sie bestätigst.",
+        "The setup wizard walks you through the main helpers in a few steps. Your settings stay until you confirm."}, "firstSteps")
+    form:Buttons({{text = {"Einrichtung starten", "Start setup"}, width = 180, variant = "primary",
+        visible = function() return not setupDone() end, onClick = function() NS.Setup.Open() end}})
+
+    -- Eight quick switches. Every switch reads and writes the same key as its detail page.
+    -- The description of the card carries the profile and how many quick switches are on.
+    form:Card({"Schnelleinstellungen", "Quick settings"}, function()
         local on = 0
         for _, entry in ipairs(U.Quick) do if U.QuickActive(entry) then on = on + 1 end end
-        return string.format(tr("Profil: %s   ·   %d von %d Schnellfunktionen aktiv", "Profile: %s   ·   %d of %d quick functions active"),
-            NS.Profiles.Active(), on, #U.Quick)
-    end, height = 16})
-    T.Tint(status, "SetTextColor", "textSoft")
-    v.overviewStatus = status
-
-    -- First setup: offered prominently until the wizard was finished or skipped once.
-    local bannerTop = form.y
-    local banner = CreateFrame("Frame", nil, p, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    banner:SetPoint("TOPLEFT", 0, bannerTop)
-    banner:SetSize(width, 64)
-    T.Panel(banner, "surface")
-    local bannerTitle = T.Text(banner, tr("Erste Schritte", "First steps"), "GameFontNormal", "gold")
-    bannerTitle:SetPoint("TOPLEFT", 14, -12)
-    local bannerText = T.Text(banner, tr("Der Einrichtungsassistent führt in wenigen Schritten durch die wichtigsten Helfer. Deine Einstellungen bleiben, bis du sie bestätigst.",
-        "The setup wizard walks you through the main helpers in a few steps. Your settings stay until you confirm."), "GameFontHighlightSmall", "textSoft")
-    bannerText:SetPoint("TOPLEFT", 14, -30)
-    bannerText:SetWidth(width - 220)
-    local start = T.Button(banner, tr("Einrichtung starten", "Start setup"), 180, 28, function() NS.Setup.Open() end, "primary")
-    start:SetPoint("RIGHT", -14, 0)
-    local BANNER = 76
-    v.overviewBanner = banner
-
-    -- Everything below moves up when the banner is not needed.
-    local body = CreateFrame("Frame", nil, p)
-    body:SetWidth(width)
-    local by = 0
-    W.Section(body, tr("Schnelleinstellungen", "Quick settings"), by, width)
-    by = by - 28
-    local hint = T.Text(body, tr("Direkt hier ein- und ausschalten. Gilt sofort und wird gespeichert.", "Switch on and off right here. Applies at once and is saved."), "GameFontHighlightSmall", "dim")
-    hint:SetPoint("TOPLEFT", 0, by)
-    hint:SetWidth(width)
-    by = by - 22
-    -- Two columns; the window scales as a whole, so the grid keeps its shape on small screens.
+        return string.format(tr("Profil: %s   ·   %d von %d Schnellfunktionen aktiv\nDirekt hier ein- und ausschalten. Gilt sofort und wird gespeichert.",
+            "Profile: %s   ·   %d of %d quick functions active\nSwitch on and off right here. Applies at once and is saved."), NS.Profiles.Active(), on, #U.Quick)
+    end, "quick")
     local gap = 10
-    local tileWidth = math.floor((width - gap) / 2)
-    for index, entry in ipairs(U.Quick) do
-        local column, line = (index - 1) % 2, math.floor((index - 1) / 2)
-        local tile = C.SwitchTile(v, body, tileWidth, {
-            key = entry.key, id = "quick:" .. (entry.key or entry.id), title = entry.title, desc = entry.desc, tip = entry.tip,
-            get = entry.get, set = entry.set, open = entry.open, blocked = quickBlocked(entry)})
-        tile:SetPoint("TOPLEFT", column * (tileWidth + gap), by - line * (C.TileHeight + gap))
-    end
-    by = by - math.ceil(#U.Quick / 2) * (C.TileHeight + gap) - 14
+    local lines = math.ceil(#U.Quick / 2)
+    form:Custom({anchor = "quickTiles", height = lines * (C.TileHeight + gap) - gap + 8, build = function(frame)
+        -- Two columns of tiles.
+        local tileWidth = math.floor((frame:GetWidth() - gap) / 2)
+        for index, entry in ipairs(U.Quick) do
+            local column, line = (index - 1) % 2, math.floor((index - 1) / 2)
+            local tile = C.SwitchTile(v, frame, tileWidth, {
+                key = entry.key, id = "quick:" .. (entry.key or entry.id), title = entry.title, desc = entry.desc, tip = entry.tip,
+                get = entry.get, set = entry.set, open = entry.open, blocked = quickBlocked(entry)})
+            tile:SetPoint("TOPLEFT", column * (tileWidth + gap), -(4 + line * (C.TileHeight + gap)))
+        end
+    end})
 
-    W.Section(body, tr("Direkt öffnen", "Open directly"), by, width)
-    by = by - 30
+    form:Card({"Direkt öffnen", "Open directly"}, nil, "links")
     local links = {
-        {title = {"Makros", "Macros"}, desc = {"Makro-Browser", "Macro browser"}, icon = "Interface\\Icons\\INV_Misc_Note_01",
+        {title = {"Makros", "Macros"}, desc = {"Makro-Browser", "Macro browser"}, icon = "note",
             tip = {"Fertige Makros suchen und übernehmen.", "Find and add ready-made macros."}, action = function() v:SelectPage("macros") end,
             status = function() return string.format(tr("%d Makros", "%d macros"), #NS.MacroData) end},
-        {title = {"Grafik", "Graphics"}, desc = {"Erweiterte Grafik", "Advanced graphics"}, icon = "Interface\\Icons\\INV_Misc_Spyglass_02",
+        {title = {"Grafik", "Graphics"}, desc = {"Erweiterte Grafik", "Advanced graphics"}, icon = "star",
             tip = {"Grafikeinstellungen, die das Spielmenü nicht anbietet.", "Graphics settings the game menu does not offer."}, action = function() v:SelectPage("graphics") end,
             status = function()
                 local changed = NS.Graphics.ChangedCount(db())
                 return changed == 0 and tr("Nichts geändert", "Nothing changed") or string.format(tr("%d geändert", "%d changed"), changed)
             end},
-        {title = {"UI-Layouts", "UI layouts"}, desc = {"Layout-Bibliothek", "Layout library"}, icon = "Interface\\Icons\\INV_Misc_Map02",
+        {title = {"UI-Layouts", "UI layouts"}, desc = {"Layout-Bibliothek", "Layout library"}, icon = "layers",
             tip = {"Layouts für Bearbeitungsmodus und Cooldown Manager ansehen und importieren.", "View and import Edit Mode and Cooldown Manager layouts."}, action = function() v:SelectPage("layouts") end,
             status = function() return string.format(tr("%d gespeichert", "%d saved"), #NS.Layouts.Library().entries) end},
-        {title = {"Profile", "Profiles"}, desc = {"Einstellungsprofile", "Settings profiles"}, icon = "Interface\\Icons\\INV_Misc_GroupNeedMore",
+        {title = {"Profile", "Profiles"}, desc = {"Einstellungsprofile", "Settings profiles"}, icon = "characters",
             tip = {"Profil wechseln, anlegen, teilen oder importieren.", "Switch, create, share or import a profile."}, action = function() v:Jump("advanced", "profiles") end,
             status = function() return NS.Profiles.Active() end},
     }
-    local linkWidth = math.floor((width - 3 * 8) / 4)
-    v.overviewLinks = {}
-    for index, link in ipairs(links) do
-        local tile = C.NavTile(v, body, linkWidth, link)
-        v.overviewLinks[index] = tile
-        tile:SetPoint("TOPLEFT", (index - 1) * (linkWidth + 8), by)
-    end
-    by = by - C.NavTileHeight - 16
+    form:Custom({anchor = "linkTiles", height = C.NavTileHeight + 8, build = function(frame)
+        local linkWidth = math.floor((frame:GetWidth() - 3 * 8) / 4)
+        v.overviewLinks = {}
+        for index, link in ipairs(links) do
+            local tile = C.NavTile(v, frame, linkWidth, link)
+            v.overviewLinks[index] = tile
+            tile:SetPoint("TOPLEFT", (index - 1) * (linkWidth + 8), -4)
+        end
+    end})
 
     -- After setup only a small way back into the wizard.
-    local again = T.Button(body, tr("Einrichtung erneut starten", "Run setup again"), 220, 24, function() NS.Setup.Open() end, "secondary")
-    again:SetPoint("TOPLEFT", 0, by)
-    C.Tooltip(again, tr("Einrichtung erneut starten", "Run setup again"),
-        tr("Öffnet den Einrichtungsassistenten. Er übernimmt erst etwas, wenn du ihn abschließt.", "Opens the setup wizard. It only applies something once you finish it."))
-    v.overviewAgain = again
-    by = by - 30
-    body:SetHeight(-by)
-
-    v:AddUpdate(function()
-        local done = setupDone()
-        banner:SetShown(not done)
-        again:SetShown(done)
-        body:ClearAllPoints()
-        body:SetPoint("TOPLEFT", 0, bannerTop - (done and 0 or BANNER))
-    end)
-    -- Room for the banner is always reserved in the page height; without it the page only scrolls a little less.
-    form.y = bannerTop - BANNER + by
+    form:Buttons({{text = {"Einrichtung erneut starten", "Run setup again"}, width = 220,
+        tip = {"Öffnet den Einrichtungsassistenten. Er übernimmt erst etwas, wenn du ihn abschließt.", "Opens the setup wizard. It only applies something once you finish it."},
+        visible = setupDone, onClick = function() NS.Setup.Open() end}})
 end
 
-U.AddPage({id = "overview", title = {"Übersicht", "Overview"}, heading = {"ZENIAL Utility", "ZENIAL Utility"}, icon = "Interface\\Icons\\INV_Misc_Book_09",
+U.AddPage({id = "overview", title = {"Übersicht", "Overview"}, icon = "today",
     desc = {"Deine wichtigsten Einstellungen auf einen Blick.", "Your most important settings at a glance."},
     keywords = "start home übersicht overview dashboard schnell quick schnelleinstellungen",
     search = {
@@ -277,15 +240,16 @@ U.AddPage({id = "overview", title = {"Übersicht", "Overview"}, heading = {"ZENI
 ----------------------------------------------------------------------
 -- Everyday comfort
 ----------------------------------------------------------------------
-local function buildRolls(form, v, p)
-    local y = row(form, 112)
-    v.rollLabel = T.Text(p, "", "GameFontHighlightSmall", "text")
-    v.rollLabel:SetPoint("TOPLEFT", C.Indent, y)
-    v.rollLabel:SetWidth(C.Width - C.Indent)
-    v.rollLabel:SetHeight(104)
+local function buildRolls(form, v)
+    form:Custom({anchor = "rollList", height = 112, build = function(frame)
+        v.rollLabel = T.Text(frame, "", "GameFontHighlightSmall", "text")
+        v.rollLabel:SetPoint("TOPLEFT", C.Indent, -8)
+        v.rollLabel:SetWidth(frame:GetWidth() - C.Indent)
+        v.rollLabel:SetHeight(104)
+    end})
 end
 
-U.AddPage({id = "comfort", group = GROUP_SETTINGS, title = {"Spielkomfort", "Everyday comfort"}, icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+U.AddPage({id = "comfort", group = GROUP_SETTINGS, title = {"Spielkomfort", "Everyday comfort"}, icon = "check",
     desc = {"Quests, NPC-Dialoge, Taschen, Post, Erfahrung, Screenshots und Würfeln.", "Quests, NPC dialogs, bags, mail, experience, screenshots and rolls."},
     keywords = "qol quality of life komfort comfort",
     nodes = {
@@ -339,73 +303,59 @@ U.AddPage({id = "comfort", group = GROUP_SETTINGS, title = {"Spielkomfort", "Eve
 ----------------------------------------------------------------------
 -- Loot and vendors
 ----------------------------------------------------------------------
-local function buildRestock(form, v, p)
+local function buildRestock(form, v)
     local B = NS.AutoBuy
     local S = function() return B.Settings() end
-    form:Toggle({id = "autoBuyEnabled", title = {"Einkaufsliste beim Händler zeigen", "Show the shopping list at vendors"},
+    local enabled = function() return S().enabled end
+    form:Toggle({anchor = "autoBuyEnabled", label = {"Einkaufsliste beim Händler zeigen", "Show the shopping list at vendors"},
         desc = {"Bietet fehlende Reagenzien, Giftzutaten und Munition zum Kauf an.", "Offers missing reagents, poison ingredients and ammo for purchase."},
         get = function() return S().enabled end, set = function(value) S().enabled = value end})
-    form:Toggle({id = "autoBuyAuto", title = {"Ohne Nachfrage kaufen", "Buy without asking"},
+    form:Toggle({anchor = "autoBuyAuto", label = {"Ohne Nachfrage kaufen", "Buy without asking"},
         desc = {"Kauft beim Öffnen des Händlers sofort. Die Grenzen unten gelten immer.", "Buys as soon as the vendor opens. The limits below always apply."},
-        parent = function() return S().enabled end,
+        parent = enabled,
         get = function() return S().auto == true and S().confirm == false end,
         set = function(value) S().auto = value; S().confirm = not value end})
-    local enabled = function() return S().enabled end
-    form:Slider({id = "maxCost", title = {"Höchstens pro Händlerbesuch", "At most per vendor visit"}, min = 0, max = 1000, step = 5, parent = enabled,
-        format = function(value) return value == 0 and tr("Kein Limit", "No limit") or (value .. " " .. tr("Gold", "gold")) end,
+    form:Slider({anchor = "maxCost", label = {"Höchstens pro Händlerbesuch", "At most per vendor visit"}, min = 0, max = 1000, step = 5, parent = enabled,
+        labels = U.StepLabels(0, 1000, 5, function(value) return value == 0 and tr("Kein Limit", "No limit") or (value .. " " .. tr("Gold", "gold")) end),
         get = function() return tonumber(S().maxCost) or 0 end, set = function(value) S().maxCost = value end})
-    form:Slider({id = "ammoTarget", title = {"Munition: Zielmenge", "Ammo: target amount"}, min = 0, max = 5000, step = 100, parent = enabled,
-        format = function(value) return value == 0 and tr("Nicht kaufen", "Do not buy") or tostring(value) end,
+    form:Slider({anchor = "ammoTarget", label = {"Munition: Zielmenge", "Ammo: target amount"}, min = 0, max = 5000, step = 100, parent = enabled,
+        labels = U.StepLabels(0, 5000, 100, function(value) return value == 0 and tr("Nicht kaufen", "Do not buy") or tostring(value) end),
         get = function() return tonumber(S().ammoTarget) or 0 end, set = function(value) S().ammoTarget = value end})
     if A.PlayerClass() == "ROGUE" then
-        form:Slider({id = "poisonStop", title = {"Keine Giftzutaten ab so vielen Giften", "No poison ingredients from this many poisons"}, min = 0, max = 200, step = 5, parent = enabled,
-            format = function(value) return value == 0 and tr("Immer kaufen", "Always buy") or tostring(value) end,
+        form:Slider({anchor = "poisonStop", label = {"Keine Giftzutaten ab so vielen Giften", "No poison ingredients from this many poisons"}, min = 0, max = 200, step = 5, parent = enabled,
+            labels = U.StepLabels(0, 200, 5, function(value) return value == 0 and tr("Immer kaufen", "Always buy") or tostring(value) end),
             get = function() return tonumber(S().poisonStop) or 0 end, set = function(value) S().poisonStop = value end})
     end
-    local _, height = form:Text(tr("Zielmengen je Reagenz (0 = nicht kaufen). In Klammern: was du gerade dabei hast.", "Target amount per reagent (0 = do not buy). In brackets: what you carry right now."), 0)
-    form.y = form.y - height - 6
+    form:Note({text = {"Zielmengen je Reagenz (0 = nicht kaufen). In Klammern: was du gerade dabei hast.", "Target amount per reagent (0 = do not buy). In brackets: what you carry right now."}})
     if B.HasReagentEconomy() then
-        local _, h2 = form:Text(tr("Reagent Economy ist erlernt: mit „nicht nötig“ markierte Reagenzien brauchst du nicht mehr.", "Reagent Economy is learned: reagents marked “not needed” are no longer required."), 0)
-        form.y = form.y - h2 - 6
+        form:Note({text = {"Reagent Economy ist erlernt: mit „nicht nötig“ markierte Reagenzien brauchst du nicht mehr.", "Reagent Economy is learned: reagents marked “not needed” are no longer required."}})
     end
     local catalog = B.Catalog()
     if #catalog == 0 then
-        local _, h3 = form:Text(tr("Deine Klasse braucht keine Reagenzien vom Händler.", "Your class needs no reagents from vendors."), 0, nil, nil, "textSoft")
-        form.y = form.y - h3 - 6
+        form:Note({text = {"Deine Klasse braucht keine Reagenzien vom Händler.", "Your class needs no reagents from vendors."}})
     end
     local items = _G.C_Item
     for _, entry in ipairs(catalog) do
         local item = entry.item
-        local y = row(form, 30)
-        local label = T.Text(p, "", "GameFontHighlight", "text")
-        label:SetPoint("TOPLEFT", 0, y - 5)
-        label:SetWidth(420)
-        v:AddUpdate(function()
-            local itemName = items and A.Call(items.GetItemNameByID, item)
-            -- Every class item can be chosen; a short note says when it is not needed yet.
-            local note = (entry.spared and tr("  · nicht nötig", "  · not needed"))
-                or (not entry.learned and tr("  · noch nicht erlernt", "  · not learned yet")) or ""
-            label:SetText(string.format("%s  (%d)%s", itemName or ("#" .. item), A.ItemCount(item), note))
-            T.Tint(label, "SetTextColor", enabled() and "text" or "disabledText")
-        end)
-        local edit = W.Edit(p, 440, y, 90, function(text)
-            B.SetTarget(item, tonumber(text))
-            B.SettingsChanged()
-        end)
-        W.Tooltip(edit, tr("Zielmenge", "Target amount"), tr("So viele sollen nach dem Einkauf in den Taschen sein.", "This many should be in your bags after shopping."))
-        v:AddUpdate(function() if not edit:HasFocus() then edit:SetText(tostring(B.GetTarget(item))) end end)
+        form:Input({anchor = "restock:" .. item, width = 90, numeric = true, enabled = enabled,
+            tip = {"So viele sollen nach dem Einkauf in den Taschen sein.", "This many should be in your bags after shopping."},
+            label = function()
+                local itemName = items and A.Call(items.GetItemNameByID, item)
+                -- Every class item can be chosen; a short note says when it is not needed yet.
+                local note = (entry.spared and tr("  · nicht nötig", "  · not needed"))
+                    or (not entry.learned and tr("  · noch nicht erlernt", "  · not learned yet")) or ""
+                return string.format("%s  (%d)%s", itemName or ("#" .. item), A.ItemCount(item), note)
+            end,
+            get = function() return B.GetTarget(item) end,
+            set = function(value) B.SetTarget(item, value); B.SettingsChanged() end})
     end
 end
 
-local function buildSellStats(form, v, p)
-    local y = row(form, 22)
-    local stats = T.Text(p, "", "GameFontHighlightSmall", "muted")
-    stats:SetPoint("TOPLEFT", C.Indent, y)
-    stats:SetWidth(C.Width - C.Indent)
-    v:AddUpdate(function()
+local function buildSellStats(form)
+    form:Note({anchor = "sellStats", text = function()
         local data = db().sellStats
-        stats:SetText(string.format(tr("Bisher %d graue Gegenstände für %s verkauft.", "So far %d grey items sold for %s."), tonumber(data.count) or 0, A.Money(tonumber(data.total) or 0)))
-    end)
+        return string.format(tr("Bisher %d graue Gegenstände für %s verkauft.", "So far %d grey items sold for %s."), tonumber(data.count) or 0, A.Money(tonumber(data.total) or 0))
+    end})
 end
 
 -- One sentence when the roll window is on but cannot take over; empty otherwise.
@@ -425,7 +375,7 @@ local function lootRollHint()
     return ""
 end
 
-U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Loot & vendors"}, icon = "Interface\\Icons\\INV_Misc_Bag_10",
+U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Loot & vendors"}, icon = "trade",
     desc = {"Plündern, Loot-Popup, Verkaufen, Reparieren und Nachkaufen.", "Looting, loot popup, selling, repairing and restocking."},
     keywords = "loot beute plündern händler vendor merchant",
     nodes = {
@@ -481,7 +431,7 @@ U.AddPage({id = "loot", group = GROUP_SETTINGS, title = {"Beute & Händler", "Lo
             {text = {"Position zurücksetzen", "Reset position"}, width = 190, action = function(v) NS.LootRollCards.ResetPosition(); v:SetMessage(tr("Position zurückgesetzt.", "Position reset.")) end},
             {text = {"Verlauf öffnen", "Open history"}, width = 150, keywords = "verlauf history würfel roll", action = function() NS.LootRollHistory.Show() end},
             {text = {"Verlauf löschen", "Clear history"}, width = 150, action = function(v)
-                C.Confirm(v, tr("Verlauf löschen?", "Clear the history?"),
+                U.Confirm(v, tr("Verlauf löschen?", "Clear the history?"),
                     tr("Alle gespeicherten Würfe dieses Charakters werden entfernt.", "All saved rolls of this character are removed."),
                     tr("Löschen", "Delete"), function()
                         NS.LootRoll.ClearHistory()
@@ -570,37 +520,34 @@ function U.RefreshRankRows(v)
         status = string.format(tr("%d Aktionsbutton(s) mit veraltetem Rang.", "%d action button(s) with an outdated rank."), #open)
         if #open > RANK_ROWS then status = status .. string.format(tr(" Die ersten %d stehen hier.", " The first %d are listed."), RANK_ROWS) end
     end
-    v.rankStatus:SetText(status)
-    v.rankIgnoreTitle:SetShown(#ignored > 0)
+    v.rankStatusText = status
+    v.rankHasIgnored = #ignored > 0
 end
 
-local function buildRanks(form, v, p)
+local function buildRanks(form, v)
     local K = NS.ActionRanks
-    local y = row(form, 24)
-    v.rankStatus = T.Text(p, "", "GameFontHighlightSmall", "textSoft")
-    v.rankStatus:SetPoint("TOPLEFT", C.Indent, y)
-    v.rankStatus:SetWidth(C.Width - C.Indent)
+    form:Note({anchor = "rankStatus", text = function() return v.rankStatusText or "" end})
     v.rankRows = {}
     for index = 1, RANK_ROWS do
-        v.rankRows[index] = listRow(v, p, form.y - (index - 1) * 30, {
-            {{"Zauber ignorieren", "Ignore spell"}, function(frame) if frame.mark then K.IgnoreSpell(frame.mark.spell, true) end end},
-            {{"Platz ignorieren", "Ignore slot"}, function(frame) if frame.mark then K.IgnoreSlot(frame.mark.slot, true) end end},
-        })
+        form:Custom({height = 30, visible = function() return v.rankRows[index] ~= nil and v.rankRows[index].mark ~= nil end, build = function(frame)
+            v.rankRows[index] = listRow(v, frame, {
+                {{"Zauber ignorieren", "Ignore spell"}, function(row) if row.mark then K.IgnoreSpell(row.mark.spell, true) end end},
+                {{"Platz ignorieren", "Ignore slot"}, function(row) if row.mark then K.IgnoreSlot(row.mark.slot, true) end end},
+            }, frame:GetWidth())
+        end})
     end
-    form.y = form.y - RANK_ROWS * 30
-    y = row(form, 26)
-    v.rankIgnoreTitle = T.Text(p, tr("Ausnahmen (werden nicht markiert)", "Exceptions (not marked)"), "GameFontNormal", "gold")
-    v.rankIgnoreTitle:SetPoint("TOPLEFT", 0, y - 4)
+    form:Note({text = function() return v.rankHasIgnored and tr("Ausnahmen (werden nicht markiert)", "Exceptions (not marked)") or "" end})
     v.rankIgnoreRows = {}
     for index = 1, RANK_ROWS do
-        v.rankIgnoreRows[index] = listRow(v, p, form.y - (index - 1) * 30, {
-            {{"Wieder prüfen", "Check again"}, function(frame)
-                local entry = frame.entry
-                if entry and entry.spell then K.IgnoreSpell(entry.spell, false) elseif entry then K.IgnoreSlot(entry.slot, false) end
-            end},
-        })
+        form:Custom({height = 30, visible = function() return v.rankIgnoreRows[index] ~= nil and v.rankIgnoreRows[index].entry ~= nil end, build = function(frame)
+            v.rankIgnoreRows[index] = listRow(v, frame, {
+                {{"Wieder prüfen", "Check again"}, function(row)
+                    local entry = row.entry
+                    if entry and entry.spell then K.IgnoreSpell(entry.spell, false) elseif entry then K.IgnoreSlot(entry.slot, false) end
+                end},
+            }, frame:GetWidth())
+        end})
     end
-    form.y = form.y - RANK_ROWS * 30
     v:AddUpdate(function() U.RefreshRankRows(v) end)
 end
 
@@ -609,7 +556,7 @@ local function anyWarning()
     return d.warnDurability or d.warnBags or d.warnAmmo or d.warnPoison or d.warnReagents
 end
 
-U.AddPage({id = "interface", group = GROUP_SETTINGS, title = {"Interface & Meldungen", "Interface & messages"}, icon = "Interface\\Icons\\INV_Misc_Gear_01",
+U.AddPage({id = "interface", group = GROUP_SETTINGS, title = {"Interface & Meldungen", "Interface & messages"}, icon = "filter",
     desc = {"Rote Fehlermeldungen und Fehlersprache, Warnhinweise, ausgeblendete Elemente und Zauberränge.", "Red error messages and error speech, warnings, hidden elements and spell ranks."},
     keywords = "ui interface oberfläche meldung message",
     resetKeys = {"errorFilter"},
@@ -658,7 +605,7 @@ U.AddPage({id = "interface", group = GROUP_SETTINGS, title = {"Interface & Meldu
 ----------------------------------------------------------------------
 -- Tooltips
 ----------------------------------------------------------------------
-U.AddPage({id = "tooltip", group = GROUP_SETTINGS, title = {"Tooltips", "Tooltips"}, icon = "Interface\\Icons\\INV_Misc_Book_11",
+U.AddPage({id = "tooltip", group = GROUP_SETTINGS, title = {"Tooltips", "Tooltips"}, icon = "info",
     desc = {"Was Tooltips von Spielern und Gegenständen zeigen und wo sie erscheinen.", "What player and item tooltips show and where they appear."},
     keywords = "tooltip tooltips hinweis",
     nodes = {
@@ -696,32 +643,29 @@ local function barOptions()
     return out
 end
 
-local function buildBars(form, v, p)
+local function buildBars(form, v)
     local R, B = NS.Reminders, NS.WarnBars
-    local y = row(form, 34)
-    local label = T.Text(p, tr("Leiste bearbeiten", "Edit bar"), "GameFontHighlight", "text")
-    label:SetPoint("TOPLEFT", 0, y - 6)
-    label:SetWidth(150)
-    local pickBar = C.Dropdown(v, p, 200, barOptions, function() return selectedBar(v).id end, function(id)
-        for index, bar in ipairs(db().warnBars) do if bar.id == id then v.barIndex = index end end
-    end)
-    pickBar:SetPoint("TOPLEFT", 150, y)
-    local name = W.Edit(p, 360, y, 150, function(text)
-        selectedBar(v).name = text ~= "" and text or selectedBar(v).id
-        NS.Profiles.Store()
-    end)
-    W.Tooltip(name, tr("Name der Leiste", "Bar name"))
-    v:AddUpdate(function() if not name:HasFocus() then name:SetText(selectedBar(v).name) end end)
+    form:Select({anchor = "barPick", label = {"Leiste bearbeiten", "Edit bar"}, options = barOptions, translate = false,
+        get = function() return selectedBar(v).id end,
+        set = function(id)
+            for index, bar in ipairs(db().warnBars) do if bar.id == id then v.barIndex = index end end
+        end})
+    form:Input({anchor = "barName", label = {"Name der Leiste", "Bar name"}, maxLetters = 120,
+        get = function() return selectedBar(v).name end,
+        set = function(text)
+            selectedBar(v).name = text ~= "" and text or selectedBar(v).id
+            NS.Profiles.Store()
+        end})
     form:Buttons({
-        {text = {"Neue Leiste", "New bar"}, width = 140, action = function()
+        {text = {"Neue Leiste", "New bar"}, width = 140, onClick = function()
             if not R.AddBar(tr("Neue Leiste", "New bar")) then v:SetMessage(tr("Mehr Leisten sind nicht möglich.", "No more bars possible.")); return end
             v.barIndex = #db().warnBars
             v:Changed()
         end},
-        {text = {"Leiste löschen …", "Delete bar …"}, width = 150, variant = "danger", action = function()
+        {text = {"Leiste löschen …", "Delete bar …"}, width = 150, variant = "danger", onClick = function()
             local bar = selectedBar(v)
             if bar.id == L.GeneralBar then v:SetMessage(tr("Die allgemeine Leiste bleibt bestehen.", "The general bar stays.")); return end
-            C.Confirm(v, tr("Leiste löschen?", "Delete bar?"), string.format(tr("„%s“ wird gelöscht. Ihre Einträge wandern auf die allgemeine Leiste.", "“%s” is deleted. Its entries move to the general bar."), bar.name),
+            U.Confirm(v, tr("Leiste löschen?", "Delete bar?"), string.format(tr("„%s“ wird gelöscht. Ihre Einträge wandern auf die allgemeine Leiste.", "“%s” is deleted. Its entries move to the general bar."), bar.name),
                 tr("Löschen", "Delete"), function()
                     R.DeleteBar(bar.id)
                     v.barIndex = 1
@@ -729,21 +673,21 @@ local function buildBars(form, v, p)
                 end, "danger")
         end},
     })
-    form:Slider({id = "barSize", title = {"Symbolgröße", "Icon size"}, min = 16, max = 64, step = 2, suffix = " px",
+    form:Slider({anchor = "barSize", label = {"Symbolgröße", "Icon size"}, min = 16, max = 64, step = 2, suffix = " px",
         get = function() return selectedBar(v).size end, set = function(value) selectedBar(v).size = value end})
-    form:Choice({id = "barGrow", title = {"Wachstumsrichtung", "Growth direction"},
+    form:Select({anchor = "barGrow", label = {"Wachstumsrichtung", "Growth direction"},
         options = {{"RIGHT", {"Nach rechts", "To the right"}}, {"LEFT", {"Nach links", "To the left"}}, {"UP", {"Nach oben", "Upward"}}, {"DOWN", {"Nach unten", "Downward"}}},
         get = function() return selectedBar(v).grow end, set = function(value) selectedBar(v).grow = value end})
-    form:Toggle({id = "barCountdown", title = {"Restzeit auf den Symbolen", "Time left on the icons"},
+    form:Toggle({anchor = "barCountdown", label = {"Restzeit auf den Symbolen", "Time left on the icons"},
         get = function() return selectedBar(v).countdown end, set = function(value) selectedBar(v).countdown = value end})
     form:Buttons({
-        {text = {"Leisten verschieben", "Move bars"}, width = 180, action = function()
+        {text = {"Leisten verschieben", "Move bars"}, width = 180, onClick = function()
             B.SetMoving(not B.moving)
             v:SetMessage(B.moving and tr("Leisten ziehen, danach erneut klicken.", "Drag the bars, then click again.") or tr("Position gespeichert.", "Position saved."))
         end},
-        {text = {"Vorschau zeigen", "Show preview"}, width = 160, action = function() B.SetPreview(not B.preview) end},
-        {text = {"Alle Leisten zurücksetzen …", "Reset all bars …"}, width = 220, action = function()
-            C.Confirm(v, tr("Alle Leisten zurücksetzen?", "Reset all bars?"), tr("Eigene Leisten werden gelöscht, Größe und Position kehren zum Standard zurück. Die Einträge bleiben eingestellt.", "Own bars are deleted, size and position return to the default. The entries keep their settings."),
+        {text = {"Vorschau zeigen", "Show preview"}, width = 160, onClick = function() B.SetPreview(not B.preview) end},
+        {text = {"Alle Leisten zurücksetzen …", "Reset all bars …"}, width = 220, onClick = function()
+            U.Confirm(v, tr("Alle Leisten zurücksetzen?", "Reset all bars?"), tr("Eigene Leisten werden gelöscht, Größe und Position kehren zum Standard zurück. Die Einträge bleiben eingestellt.", "Own bars are deleted, size and position return to the default. The entries keep their settings."),
                 tr("Zurücksetzen", "Reset"), function()
                     db().warnBars = L.DefaultBars()
                     v.barIndex = 1
@@ -753,59 +697,40 @@ local function buildBars(form, v, p)
     })
 end
 
-local function buildEntries(form, v, p)
+-- Every entry has three rows (on, which bar, warning time) under a heading for its group.
+local function buildEntries(form, v)
     local R = NS.Reminders
     local classSet, generalSet = {}, {}
     for _, entry in ipairs(NS.BuffData.classes[A.PlayerClass()] or {}) do classSet[entry] = true end
     for _, entry in ipairs(NS.BuffData.general) do generalSet[entry] = true end
     local lastGroup
-    local function barOf(entry) return R.BarOf(entry) end
+    local function barsOn() return db().modBuffs == true end
     for _, entry in ipairs(R.AllEntries()) do
         local group = classSet[entry] and tr("Klasse", "Class") or generalSet[entry] and tr("Sammeln und Lager", "Gathering and camp") or tr("Verbrauchsmaterial", "Consumables")
         if group ~= lastGroup then
             lastGroup = group
-            local y = row(form, 24)
-            local heading = T.Text(p, group, "GameFontNormal", "gold")
-            heading:SetPoint("TOPLEFT", 0, y - 4)
+            form:Note({anchor = "group:" .. group, text = group})
         end
-        local y = form.y
-        local check = CreateFrame("CheckButton", nil, p, "UICheckButtonTemplate")
-        check:SetSize(24, 24)
-        check:SetPoint("TOPLEFT", 0, y)
-        T.StyleCheckbox(check)
-        local title = T.Text(p, R.Title(entry), "GameFontHighlight", "text")
-        title:SetPoint("TOPLEFT", 30, y - 5)
-        title:SetWidth(250)
-        title:SetWordWrap(false)
-        check:SetScript("OnClick", function(self) R.SetOn(entry.key, self:GetChecked() == true); v:Changed() end)
-        local bar = C.Dropdown(v, p, 170, barOptions, function() return barOf(entry) end, function(id) R.SetBar(entry.key, id) end)
-        bar:SetPoint("TOPLEFT", 290, y)
-        W.Tooltip(bar, tr("Auf welcher Leiste", "On which bar"))
-        local edit
+        form:Toggle({anchor = "entry:" .. entry.key, label = R.Title(entry), enabled = barsOn,
+            get = function() return R.IsOn(entry) == true end, set = function(value) R.SetOn(entry.key, value) end})
+        form:Select({anchor = "entryBar:" .. entry.key, label = {"Auf welcher Leiste", "On which bar"}, options = barOptions, translate = false, enabled = barsOn,
+            get = function() return R.BarOf(entry) end, set = function(id) R.SetBar(entry.key, id) end})
         if entry.kind ~= "tracking" then
-            edit = W.Edit(p, 470, y, 62, function(text)
-                R.SetWarn(entry.key, tonumber(text))
-                NS.Profiles.Store()
-            end)
-            W.Tooltip(edit, tr("Vorwarnzeit in Sekunden", "Warning time in seconds"),
-                tr("Leer: je nach Dauer 10 s, 3 min oder 5 min vorher.", "Empty: depending on duration 10 s, 3 min or 5 min before."))
+            form:Input({anchor = "entryWarn:" .. entry.key, label = {"Vorwarnzeit in Sekunden", "Warning time in seconds"}, width = 62, numeric = true, enabled = barsOn,
+                desc = {"Leer: je nach Dauer 10 s, 3 min oder 5 min vorher.", "Empty: depending on duration 10 s, 3 min or 5 min before."},
+                get = function()
+                    local saved = db().reminders[entry.key]
+                    return saved and saved.warn or nil
+                end,
+                set = function(value)
+                    R.SetWarn(entry.key, value)
+                    NS.Profiles.Store()
+                end})
         end
-        v:AddUpdate(function()
-            local on = db().modBuffs == true
-            check:SetChecked(R.IsOn(entry) == true)
-            check:SetEnabled(on)
-            bar:SetEnabled(on)
-            T.Tint(title, "SetTextColor", on and "text" or "disabledText")
-            if edit and not edit:HasFocus() then
-                local saved = db().reminders[entry.key]
-                edit:SetText(saved and saved.warn and tostring(saved.warn) or "")
-            end
-        end)
-        form.y = y - 30
     end
 end
 
-U.AddPage({id = "buffs", group = GROUP_SETTINGS, title = {"Warnleisten", "Warning bars"}, icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
+U.AddPage({id = "buffs", group = GROUP_SETTINGS, title = {"Warnleisten", "Warning bars"}, icon = "bell",
     desc = {"Symbole für fehlende oder auslaufende Buffs, Gifte und Verbrauchsmaterial.", "Icons for missing or expiring buffs, poisons and consumables."},
     keywords = "buff buffs reminder erinnerung verbrauchsmaterial consumables flask fläschchen",
     resetExtra = function(data) data.warnBars = L.DefaultBars(); data.reminders = {} end,
@@ -829,39 +754,42 @@ U.AddPage({id = "buffs", group = GROUP_SETTINGS, title = {"Warnleisten", "Warnin
 ----------------------------------------------------------------------
 -- Info bar
 ----------------------------------------------------------------------
-local function buildInfoModules(form, v, p)
+-- One row per display of the info bar: switch, name, and two arrows for the order. Free drawing on the shared skin
+-- inside a Form:Custom row; the Form has no row with arrows.
+local function buildInfoModules(form, v)
     local I = NS.InfoBar
     for index = 1, #I.Modules do
         local key = function() return I.Order()[index] end
-        local y = form.y
-        local check = CreateFrame("CheckButton", nil, p, "UICheckButtonTemplate")
-        check:SetSize(24, 24)
-        check:SetPoint("TOPLEFT", 0, y)
-        T.StyleCheckbox(check)
-        check:SetScript("OnClick", function(self) db().infoBar.on[key()] = self:GetChecked() == true; v:Changed() end)
-        local label = T.Text(p, "", "GameFontHighlight", "text")
-        label:SetPoint("TOPLEFT", 30, y - 5)
-        label:SetWidth(400)
-        local up = T.Button(p, "▲", 30, 22, function() if I.Move(key(), -1) then v:Changed() end end, "secondary")
-        up:SetPoint("TOPLEFT", C.Width - 70, y)
-        W.Tooltip(up, tr("Nach vorne", "Move forward"))
-        local down = T.Button(p, "▼", 30, 22, function() if I.Move(key(), 1) then v:Changed() end end, "secondary")
-        down:SetPoint("TOPLEFT", C.Width - 36, y)
-        W.Tooltip(down, tr("Nach hinten", "Move back"))
-        v:AddUpdate(function()
-            local on = db().modInfoBar == true
-            check:SetChecked(I.IsOn(key()) == true)
-            check:SetEnabled(on)
-            label:SetText(I.Title(I.ByKey[key()]))
-            T.Tint(label, "SetTextColor", on and "text" or "disabledText")
-            up:SetEnabled(on and index > 1)
-            down:SetEnabled(on and index < #I.Modules)
-        end)
-        form.y = y - 28
+        form:Custom({anchor = "module:" .. index, height = 34, build = function(frame)
+            local width = frame:GetWidth()
+            local check = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+            check:SetSize(24, 24)
+            check:SetPoint("TOPLEFT", 0, -5)
+            T.StyleCheckbox(check)
+            check:SetScript("OnClick", function(self) db().infoBar.on[key()] = self:GetChecked() == true; v:Changed() end)
+            local label = T.Text(frame, "", "GameFontHighlight", "text")
+            label:SetPoint("TOPLEFT", 30, -10)
+            label:SetWidth(width - 130)
+            local up = T.Button(frame, "▲", 30, 22, function() if I.Move(key(), -1) then v:Changed() end end, "secondary")
+            up:SetPoint("TOPLEFT", width - 70, -6)
+            NS.Form.Tooltip(up, tr("Nach vorne", "Move forward"))
+            local down = T.Button(frame, "▼", 30, 22, function() if I.Move(key(), 1) then v:Changed() end end, "secondary")
+            down:SetPoint("TOPLEFT", width - 36, -6)
+            NS.Form.Tooltip(down, tr("Nach hinten", "Move back"))
+            v:AddUpdate(function()
+                local on = db().modInfoBar == true
+                check:SetChecked(I.IsOn(key()) == true)
+                check:SetEnabled(on)
+                label:SetText(I.Title(I.ByKey[key()]))
+                T.Tint(label, "SetTextColor", on and "text" or "disabledText")
+                up:SetEnabled(on and index > 1)
+                down:SetEnabled(on and index < #I.Modules)
+            end)
+        end})
     end
 end
 
-U.AddPage({id = "infobar", group = GROUP_SETTINGS, title = {"Infoleiste", "Info bar"}, icon = "Interface\\Icons\\INV_Misc_Note_02",
+U.AddPage({id = "infobar", group = GROUP_SETTINGS, title = {"Infoleiste", "Info bar"}, icon = "clock",
     desc = {"Verschiebbare Leiste mit Gold, Zeit, Ort, Haltbarkeit, Latenz und mehr.", "Movable bar with gold, time, location, durability, latency and more."},
     keywords = "infobar leiste bar gold fps latenz latency uhr clock",
     resetExtra = function(data) data.infoBar = {order = {}, on = {}, x = data.infoBar.x, y = data.infoBar.y} end,
@@ -883,7 +811,7 @@ U.AddPage({id = "infobar", group = GROUP_SETTINGS, title = {"Infoleiste", "Info 
 ----------------------------------------------------------------------
 -- Map
 ----------------------------------------------------------------------
-U.AddPage({id = "map", group = GROUP_SETTINGS, title = {"Karte & Navigation", "Map & navigation"}, icon = "Interface\\Icons\\INV_Misc_Map_01",
+U.AddPage({id = "map", group = GROUP_SETTINGS, title = {"Karte & Navigation", "Map & navigation"}, icon = "pin",
     desc = {"Unerkundete Gebiete, Levelbereiche auf der Weltkarte und Wegpunkte.", "Unexplored areas, level ranges on the world map and waypoints."},
     keywords = "karte map weltkarte world map navigation",
     nodes = {
@@ -899,7 +827,7 @@ U.AddPage({id = "map", group = GROUP_SETTINGS, title = {"Karte & Navigation", "M
         end, {height = 16, indent = true}),
         section("reveal", {"Karte aufdecken", "Reveal map"}, {"Nur die Anzeige ändert sich. Erkundung, Erfahrung und Erfolge bleiben unberührt. Auch im Filtermenü der Weltkarte umschaltbar.", "Only the display changes. Exploration, experience and achievements stay untouched. Can also be toggled in the world map's filter menu."}, "aufdecken reveal unerkundet unexplored fog nebel"),
         choice("mapReveal", {"Unerkundete Gebiete", "Unexplored areas"}, {{"off", {"Nicht aufdecken", "Do not reveal"}}, {"soft", {"Halbtransparent aufdecken", "Reveal translucent"}}, {"full", {"Voll aufdecken", "Reveal fully"}}}, {keywords = "aufdecken reveal"}),
-        slider("revealAlpha", {"Deckkraft der aufgedeckten Gebiete", "Opacity of revealed areas"}, .2, 1, .05, {enabled = function() return db().mapReveal == "soft" end, indent = true, format = percent}),
+        slider("revealAlpha", {"Deckkraft der aufgedeckten Gebiete", "Opacity of revealed areas"}, .2, 1, .05, {parent = function() return db().mapReveal == "soft" end, format = percent}),
         section("waypoints", {"Wegpunkte", "Waypoints"}, nil, "wegpunkt waypoint koordinaten coordinates"),
         toggle("waypoints", {"Wegpunkte per Befehl", "Waypoints by command"}, {"/zway 45.2 67.8 setzt einen Wegpunkt in deinem Gebiet, /zway clear entfernt ihn. Koordinaten zeigt die Weltkarte selbst.", "/zway 45.2 67.8 sets a waypoint in your zone, /zway clear removes it. The world map shows coordinates itself."}, {keywords = "zway wegpunkt waypoint pin"}),
     }})
@@ -907,7 +835,7 @@ U.AddPage({id = "map", group = GROUP_SETTINGS, title = {"Karte & Navigation", "M
 ----------------------------------------------------------------------
 -- Tools: macros, UI profiles (layouts) and graphics keep their own list layouts.
 ----------------------------------------------------------------------
-U.AddPage({id = "macros", group = GROUP_TOOLS, fixed = true, title = {"Makros", "Macros"}, icon = "Interface\\Icons\\INV_Misc_Note_01",
+U.AddPage({id = "macros", group = GROUP_TOOLS, fixed = true, title = {"Makros", "Macros"}, icon = "note",
     desc = {"Fertige Makros für alle Klassen suchen, ansehen und übernehmen. Auch: Charakter-Makros auf Twinks übertragen.", "Find, view and add ready-made macros for every class. Also: carry character macros over to alts."},
     keywords = "makro macro makros macros klasse class",
     search = {
@@ -915,7 +843,7 @@ U.AddPage({id = "macros", group = GROUP_TOOLS, fixed = true, title = {"Makros", 
         {title = {"Charakter-Makros übertragen", "Carry over character macros"}, keywords = "twink alt kopieren copy sichern save"},
     }})
 
-U.AddPage({id = "layouts", group = GROUP_TOOLS, fixed = true, title = {"UI-Profile", "UI profiles"}, icon = "Interface\\Icons\\INV_Misc_Map02",
+U.AddPage({id = "layouts", group = GROUP_TOOLS, fixed = true, title = {"UI-Profile", "UI profiles"}, icon = "layers",
     desc = {"Layouts für Bearbeitungsmodus und Cooldown Manager sammeln, ansehen, teilen und importieren.", "Collect, view, share and import Edit Mode and Cooldown Manager layouts."},
     keywords = "layout layouts edit mode bearbeitungsmodus cooldown manager cdm profil profile importstring import export ui",
     search = {
@@ -923,7 +851,7 @@ U.AddPage({id = "layouts", group = GROUP_TOOLS, fixed = true, title = {"UI-Profi
         {title = {"Layouts aus dem Spiel übernehmen", "Take over layouts from the game"}, keywords = "lesen read"},
     }})
 
-U.AddPage({id = "graphics", group = GROUP_TOOLS, fixed = true, title = {"Grafik", "Graphics"}, icon = "Interface\\Icons\\INV_Misc_Spyglass_02",
+U.AddPage({id = "graphics", group = GROUP_TOOLS, fixed = true, title = {"Grafik", "Graphics"}, icon = "star",
     desc = {"Grafikeinstellungen, die das Spielmenü nicht anbietet. Deine bisherigen Werte bleiben gesichert.", "Graphics settings the game menu does not offer. Your previous values stay saved."},
     keywords = "grafik graphics cvar gras grass sichtweite view distance schatten shadow hdr fps",
     search = {
@@ -947,21 +875,21 @@ end
 local function confirmPreset(v, name, title, intro)
     local list, count = presetText(name)
     if not list then v:SetMessage(tr("Schon so eingestellt. Nichts zu ändern.", "Already set up like this. Nothing to change.")); return end
-    C.Confirm(v, title, intro .. "\n\n" .. list, tr("Übernehmen", "Apply"), function()
+    U.Confirm(v, title, intro .. "\n\n" .. list, tr("Übernehmen", "Apply"), function()
         L.ApplyPreset(db(), name)
         v:Changed()
         v:SetMessage(string.format(tr("%d Einstellungen geändert. Alles bleibt einzeln änderbar.", "%d settings changed. Each one stays adjustable."), count))
     end)
 end
 
-local function buildProfiles(form, v, p)
+local function buildProfiles(form, v)
     local P = NS.Profiles
     local function report(ok, reason, done)
         if ok then v:SetMessage(done or "") else v:SetMessage(P.ReasonText(reason)) end
         v:Changed()
     end
     -- Choosing a profile loads it at once; in combat it follows after the fight.
-    v.profilePick = form:Choice({id = "activeProfile", title = {"Aktives Profil dieses Charakters", "This character's active profile"},
+    form:Select({anchor = "activeProfile", label = {"Aktives Profil dieses Charakters", "This character's active profile"}, translate = false,
         options = function()
             local out = {}
             for _, name in ipairs(P.Names()) do out[#out + 1] = {name, name} end
@@ -973,66 +901,60 @@ local function buildProfiles(form, v, p)
             if ok then v:SetMessage(string.format(tr("Profil „%s“ geladen.", "Profile “%s” loaded."), name))
             else v:SetMessage(P.ReasonText(reason)) end
         end})
-    local y = row(form, 34)
-    local label = T.Text(p, tr("Name", "Name"), "GameFontHighlight", "text")
-    label:SetPoint("TOPLEFT", 0, y - 6)
-    local name = W.Edit(p, 60, y, 260, nil)
-    name:SetMaxLetters(40)
-    W.Tooltip(name, tr("Name für ein neues Profil oder zum Umbenennen", "Name for a new profile or for renaming"))
-    v.profileName = name
+    local name = form:Input({anchor = "profileName", label = {"Name", "Name"}, maxLetters = 40,
+        tip = {"Name für ein neues Profil oder zum Umbenennen", "Name for a new profile or for renaming"},
+        get = function() return v.profileNameText or "" end, set = function(text) v.profileNameText = text end})
+    v.profileName = name.control
     form:Buttons({
-        {text = {"Neues Profil aus aktuellem", "New profile from current"}, width = 220, action = function()
-            local ok, result = P.Create(name:GetText())
+        {text = {"Neues Profil aus aktuellem", "New profile from current"}, width = 220, onClick = function()
+            local ok, result = P.Create(v.profileName:GetText())
             report(ok, result, ok and string.format(tr("Profil „%s“ angelegt.", "Profile “%s” created."), result) or nil)
         end},
-        {text = {"Aktives umbenennen", "Rename active"}, width = 170, action = function()
-            local ok, result = P.Rename(P.Active(), name:GetText())
+        {text = {"Aktives umbenennen", "Rename active"}, width = 170, onClick = function()
+            local ok, result = P.Rename(P.Active(), v.profileName:GetText())
             report(ok, result, ok and tr("Umbenannt.", "Renamed.") or nil)
         end},
-        {text = {"Aktives löschen …", "Delete active …"}, width = 170, variant = "danger", action = function()
+        {text = {"Aktives löschen …", "Delete active …"}, width = 170, variant = "danger", onClick = function()
             local active = P.Active()
             if active == P.DefaultName then v:SetMessage(P.ReasonText("default")); return end
-            C.Confirm(v, tr("Profil löschen?", "Delete profile?"), string.format(tr("„%s“ wird gelöscht. Dieser Charakter nutzt danach das Standardprofil.", "“%s” is deleted. This character then uses the default profile."), active),
+            U.Confirm(v, tr("Profil löschen?", "Delete profile?"), string.format(tr("„%s“ wird gelöscht. Dieser Charakter nutzt danach das Standardprofil.", "“%s” is deleted. This character then uses the default profile."), active),
                 tr("Löschen", "Delete"), function()
                     local ok, result = P.Delete(active)
                     report(ok, result, ok and tr("Profil gelöscht.", "Profile deleted.") or nil)
                 end, "danger")
         end},
     })
-    y = row(form, 22)
-    local share = T.Text(p, tr("Teilen: Der Profiltext enthält alle Einstellungen dieses Profils. Import legt immer ein neues Profil an; beschädigter Text wird abgelehnt.",
-        "Share: the profile text holds all settings of this profile. Import always creates a new profile; damaged text is refused."), "GameFontHighlightSmall", "dim")
-    share:SetPoint("TOPLEFT", 0, y)
-    share:SetWidth(C.Width)
-    form.y = form.y - 12
-    y = row(form, 34)
-    local box = W.Edit(p, 0, y, C.Width, nil)
-    box:SetMaxLetters(0)
-    W.Tooltip(box, tr("Profiltext", "Profile text"), tr("Hier einfügen (Strg+V) oder nach „Profiltext erzeugen“ kopieren (Strg+C).", "Paste here (Ctrl+V) or copy after “Create profile text” (Ctrl+C)."))
-    v.profileText = box
+    form:Note({text = {"Teilen: Der Profiltext enthält alle Einstellungen dieses Profils. Import legt immer ein neues Profil an; beschädigter Text wird abgelehnt.",
+        "Share: the profile text holds all settings of this profile. Import always creates a new profile; damaged text is refused."}})
+    local box = form:Input({anchor = "profileText", label = {"Profiltext", "Profile text"}, maxLetters = 0, width = 380,
+        tip = {"Hier einfügen (Strg+V) oder nach „Profiltext erzeugen“ kopieren (Strg+C).", "Paste here (Ctrl+V) or copy after “Create profile text” (Ctrl+C)."},
+        get = function() return v.profileBoxText or "" end, set = function(text) v.profileBoxText = text end})
+    v.profileText = box.control
     form:Buttons({
-        {text = {"Profiltext erzeugen", "Create profile text"}, width = 200, action = function()
-            box:SetText(P.Export() or "")
-            box:SetFocus()
-            box:HighlightText()
+        {text = {"Profiltext erzeugen", "Create profile text"}, width = 200, onClick = function()
+            v.profileBoxText = P.Export() or ""
+            v.profileText:SetText(v.profileBoxText)
+            v.profileText:SetFocus()
+            v.profileText:HighlightText()
             v:SetMessage(tr("Text ist markiert: mit Strg+C kopieren.", "The text is selected: copy with Ctrl+C."))
         end},
-        {text = {"Profiltext importieren", "Import profile text"}, width = 200, action = function()
-            local ok, result = P.Import(box:GetText())
+        {text = {"Profiltext importieren", "Import profile text"}, width = 200, onClick = function()
+            local ok, result = P.Import(v.profileText:GetText())
             report(ok, result, ok and string.format(tr("Als neues Profil „%s“ importiert.", "Imported as new profile “%s”."), result) or nil)
         end},
     })
 end
 
-local function buildPlayed(form, v, p)
-    local y = row(form, 130)
-    v.playedLabel = T.Text(p, "", "GameFontHighlightSmall", "text")
-    v.playedLabel:SetPoint("TOPLEFT", 0, y)
-    v.playedLabel:SetWidth(C.Width)
-    v.playedLabel:SetHeight(124)
+local function buildPlayed(form, v)
+    form:Custom({anchor = "playedList", height = 136, build = function(frame)
+        v.playedLabel = T.Text(frame, "", "GameFontHighlightSmall", "text")
+        v.playedLabel:SetPoint("TOPLEFT", 0, -6)
+        v.playedLabel:SetWidth(frame:GetWidth())
+        v.playedLabel:SetHeight(124)
+    end})
 end
 
-U.AddPage({id = "advanced", group = GROUP_MORE, title = {"Erweitert", "Advanced"}, icon = "Interface\\Icons\\Trade_Engineering",
+U.AddPage({id = "advanced", group = GROUP_MORE, title = {"Erweitert", "Advanced"}, icon = "settings",
     desc = {"Einstellungsprofile, Spielzeit, Empfehlungen, Einrichtungsassistent und Zurücksetzen.", "Settings profiles, playtime, recommendations, setup wizard and resets."},
     keywords = "erweitert advanced profil profile reset zurücksetzen",
     nodes = {
@@ -1069,7 +991,7 @@ U.AddPage({id = "advanced", group = GROUP_MORE, title = {"Erweitert", "Advanced"
             keywords = "reset alles everything werkseinstellung factory",
             action = function(v)
                 local P = NS.Profiles
-                C.Confirm(v, tr("Alle Einstellungen zurücksetzen?", "Reset all settings?"),
+                U.Confirm(v, tr("Alle Einstellungen zurücksetzen?", "Reset all settings?"),
                     string.format(tr("Jede Einstellung im Profil „%s“ kehrt zum Standard zurück. Das lässt sich nicht rückgängig machen. Makros, UI-Profile, Spielzeit und Grafikwerte bleiben erhalten.",
                         "Every setting in the profile “%s” returns to its default. This cannot be undone. Macros, UI profiles, playtime and graphics values are kept."), P.Active()),
                     tr("Alles zurücksetzen", "Reset everything"), function()

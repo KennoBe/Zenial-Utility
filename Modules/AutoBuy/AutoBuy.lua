@@ -1,7 +1,7 @@
 local _, NS = ...
 local B = {}
 NS.AutoBuy = B
-local A, L, T, tr, D = NS.Adapter, NS.Logic, NS.Theme, NS.Text, NS.ReagentData
+local A, L, T, K, tr, D = NS.Adapter, NS.Logic, NS.Theme, NS.Kit, NS.Text, NS.ReagentData
 
 local STEP, ROWS, SETTLE = .25, 8, 2
 local BOW_SUBCLASSES = {[2] = 2, [18] = 2, [3] = 3} -- weapon subclass to projectile subclass: arrows 2, bullets 3
@@ -197,14 +197,14 @@ local function createPanel()
     f:SetSize(250, 120)
     f:SetPoint("TOPLEFT", parent, "TOPRIGHT", 4, 0)
     f:EnableMouse(true)
-    T.Panel(f, "surface")
-    local title = T.Text(f, tr("Nachkaufen", "Restock"), "GameFontNormal", "gold")
-    title:SetPoint("TOPLEFT", 12, -10)
+    T.Shell(f)
+    -- Shared dialog header (no close button: the panel follows the merchant window).
+    K.DialogHeader(f, K.Text(f, tr("Nachkaufen", "Restock"), "title"))
     f.rows = {}
     for index = 1, ROWS do
         local row = CreateFrame("Frame", nil, f)
         row:SetSize(226, 20)
-        row:SetPoint("TOPLEFT", 12, -30 - (index - 1) * 21)
+        row:SetPoint("TOPLEFT", 12, -52 - (index - 1) * 21)
         row.icon = row:CreateTexture(nil, "ARTWORK")
         row.icon:SetSize(18, 18)
         row.icon:SetPoint("LEFT")
@@ -293,7 +293,7 @@ function B.Refresh()
             row:Hide()
         end
     end
-    local y = -34 - shown * 21
+    local y = -56 - shown * 21
     f.total:ClearAllPoints()
     f.total:SetPoint("TOPLEFT", 12, y)
     f.total:SetText(#B.plan > 0 and (tr("Gesamt: ", "Total: ") .. A.Money(B.total)) or tr("Vorrat reicht.", "Stock is sufficient."))

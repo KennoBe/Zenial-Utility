@@ -1,15 +1,12 @@
 local _, NS = ...
--- The settings window: sidebar, page header, scrolling page and the search across all pages.
--- What each page contains is declared in SettingsPages.lua; the controls live in SettingsControls.lua.
+-- The settings window: one page description (SettingsPages.lua and the list pages of the modules) builds the own
+-- window (/zutil) and the view embedded in the Community addon manager through the shared Window and Form.
+-- Setting rows are shared Form rows; the free list pages (macros, UI profiles, graphics) draw their own content
+-- on a fixed page. What each page contains is declared in SettingsPages.lua.
 local U = {views = {}, builders = {}, fixed = {}, Pages = {}, ById = {}, Order = {}, Titles = {}, KeyTitles = {}}
 NS.SettingsUI = U
-local T, tr, A, W = NS.Theme, NS.Text, NS.Adapter, NS.Widgets
-
-local WIDTH, HEIGHT, SIDEBAR = 900, 680, 196
-local NAV_TOP = -84
--- Inside the ZENIAL Community addon manager (856-pixel logical canvas, at least 464 high) the same
--- sidebar layout is used, only narrower and without the window's title bar.
-local EMBED_SIDEBAR, EMBED_NAV_TOP, EMBED_TOP = 176, -12, -40
+local T, K, tr, A, W = NS.Theme, NS.Kit, NS.Text, NS.Adapter, NS.Widgets
+local Window, Form = NS.Window, NS.Form
 
 -- Old page names keep working for /zutil <page> and for links from other addons.
 U.Aliases = {
@@ -87,203 +84,223 @@ end
 function U.KeyTitle(key) return pick(U.KeyTitles[key]) or key end
 
 ----------------------------------------------------------------------
--- Window
+-- Window position, version, reset
 ----------------------------------------------------------------------
-local function savePosition(f)
-    local point, _, relative, x, y = f:GetPoint(1)
-    if type(point) == "string" and type(x) == "number" and type(y) == "number" then
-        db().settingsWindow = {point = point, relative = relative or point, x = x, y = y}
-    end
+local function version()
+    local value = A.Call(_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata, "ZenialUtility", "Version")
+    return type(value) == "string" and value or nil
 end
 
-local function restorePosition(f)
-    local saved = db().settingsWindow
-    f:ClearAllPoints()
+local function loadPosition()
+    local saved = db() and db().settingsWindow
     if type(saved) == "table" and type(saved.point) == "string" and type(saved.x) == "number" and type(saved.y) == "number" then
-        f:SetPoint(saved.point, UIParent, type(saved.relative) == "string" and saved.relative or saved.point, saved.x, saved.y)
-    else
-        f:SetPoint("CENTER")
+        return saved.point, type(saved.relative) == "string" and saved.relative or saved.point, saved.x, saved.y
     end
 end
 
--- Small screens or a large UI scale: the window shrinks so it always fits completely.
-local function fitScale(f)
-    local h, w = UIParent:GetHeight() or 0, UIParent:GetWidth() or 0
-    if h > 0 and w > 0 then f:SetScale(math.min(1, (h - 40) / HEIGHT, (w - 40) / WIDTH)) end
+local function savePosition(point, relative, x, y)
+    db().settingsWindow = {point = point, relative = relative or point, x = x, y = y}
 end
 
 function U.ResetWindow()
     db().settingsWindow = {}
     if U.standalone then
-        local f = U.standalone.frame
-        restorePosition(f)
-        fitScale(f)
+        local frame = U.standalone.frame
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER")
+        frame:SetScale(U.standalone.window:FitScale())
     end
 end
 
-local function navButton(v, f, def, width)
-    local id = def.id
-    local button = T.Button(f, pick(def.title), width, 28, function() v:SelectPage(id) end, "secondary")
-    T.StyleNav(button, def.icon)
-    -- The label starts right of the icon instead of centred over it; a long name
-    -- switches to the smaller font rather than running into the icon or the edge.
-    local label = button.GetFontString and button:GetFontString()
-    if label and def.icon then
-        label:ClearAllPoints()
-        label:SetPoint("LEFT", 36, 0)
-        label:SetPoint("RIGHT", -8, 0)
-        label:SetJustifyH("LEFT")
-        if label.SetWordWrap then label:SetWordWrap(false) end
-        local room = button:GetWidth() - 44
-        if (label:GetStringWidth() or 0) > room then
-            -- The template swaps fonts on hover, so the button's own font objects change.
-            if button.SetNormalFontObject then button:SetNormalFontObject("GameFontNormalSmall") end
-            if button.SetHighlightFontObject then button:SetHighlightFontObject("GameFontHighlightSmall") end
-            if button.SetDisabledFontObject then button:SetDisabledFontObject("GameFontDisableSmall") end
-            label:SetFontObject("GameFontNormalSmall")
+----------------------------------------------------------------------
+-- Rows: every setting node of a page becomes a row of the shared Form
+----------------------------------------------------------------------
+-- A slider whose text is a function of its value gets one text per step: the Form shows `labels[value]`.
+-- A value off the step grid (older saved values) is looked up rounded to the grid.
+function U.StepLabels(low, high, step, format)
+    local labels = {}
+    if type(high) == "function" then high = high() end
+    for index = 0, math.floor((high - low) / step + 1e-6) do
+        local value = tonumber(string.format("%.8g", low + index * step))
+        labels[value] = format(value)
+    end
+    return setmetatable(labels, {__index = function(list, value)
+        if type(value) == "number" then return rawget(list, tonumber(string.format("%.8g", value))) end
+    end})
+end
+
+local function rowSpec(node)
+    local spec = {
+        key = node.key, anchor = node.id or node.key, label = node.title, desc = node.desc, tip = node.tip,
+        default = node.default, parent = node.parent, parentHint = node.parentHint,
+        get = node.get, set = node.set, onChange = node.change, visible = node.show,
+    }
+    if node.enabled then
+        local enabled, reason = node.enabled, node.parentHint
+        spec.enabled = function()
+            if enabled() then return true end
+            return false, reason
         end
     end
-    W.Tooltip(button, pick(def.title), pick(def.desc))
-    return button
+    return spec
 end
 
-function U.Create(parent, embedded)
-    local C = NS.SettingsControls
-    local f = CreateFrame("Frame", not embedded and "ZenialUtilitySettings" or nil, parent or UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    if embedded then
-        f:SetAllPoints(parent)
+local function buttonList(host, list)
+    local out = {}
+    for _, button in ipairs(list) do
+        out[#out + 1] = {text = button.text, tip = button.tip, variant = button.variant, width = button.width,
+            enabled = button.enabled, onClick = function() button.action(host) end}
+    end
+    return out
+end
+
+local function render(form, host, def)
+    for _, node in ipairs(def.nodes or {}) do
+        local kind = node.kind
+        if kind == "section" then
+            form:Card(node.title, node.desc, node.id)
+        elseif kind == "toggle" then
+            form:Toggle(rowSpec(node))
+        elseif kind == "slider" then
+            local spec = rowSpec(node)
+            spec.min, spec.max, spec.step = node.min, node.max, node.step
+            if type(node.format) == "function" then spec.labels = U.StepLabels(node.min, node.max, node.step, node.format) else spec.suffix = node.suffix end
+            form:Slider(spec)
+        elseif kind == "choice" then
+            local spec = rowSpec(node)
+            spec.options = node.options
+            form:Select(spec)
+        elseif kind == "buttons" then
+            form:Buttons(buttonList(host, node.buttons))
+        elseif kind == "note" then
+            local text = node.text
+            form:Note({text = text, anchor = node.ref, tone = node.color == "gold" and "warning" or nil, visible = node.show})
+        elseif kind == "custom" then
+            node.build(form, host, def)
+        end
+    end
+end
+
+-- "Restore defaults" of a page: a last card with one button, only on pages that have something to restore.
+function U.ConfirmPageReset(host, def)
+    local title = pick(def.title)
+    U.Confirm(host, tr("Standardwerte wiederherstellen?", "Restore defaults?"),
+        string.format(tr("Alle Einstellungen auf der Seite „%s“ werden auf die Standardwerte zurückgesetzt. Andere Seiten bleiben unverändert.",
+            "All settings on the “%s” page go back to their defaults. Other pages stay as they are."), title),
+        tr("Zurücksetzen", "Reset"), function()
+            if A.Combat() then host:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")); return end
+            NS.Logic.ResetKeys(db(), U.ResetKeys(def))
+            if def.resetExtra then def.resetExtra(db()) end
+            host:Changed()
+            host:SetMessage(string.format(tr("Standardwerte für „%s“ wiederhergestellt.", "Defaults restored for “%s”."), title))
+        end, "danger")
+end
+
+local function addReset(form, host, def)
+    if #U.ResetKeys(def) == 0 and not def.resetExtra then return end
+    form:Card()
+    form:Buttons({{text = {"Standardwerte wiederherstellen", "Restore defaults"}, width = 260,
+        tip = {"Setzt nur die Einstellungen dieser Seite zurück. Vorher wird nachgefragt.", "Resets only the settings on this page. You are asked first."},
+        onClick = function() U.ConfirmPageReset(host, def) end}})
+end
+
+-- The shared confirm dialog of the window.
+function U.Confirm(host, title, text, accept, onAccept, variant)
+    host.window:Confirm({title = title, text = text, accept = accept, variant = variant, onAccept = onAccept})
+end
+
+local function newContext()
+    return {
+        tr = pick,
+        read = function(key) return db()[key] end,
+        write = function(key, value) db()[key] = value end,
+        changed = function() NS.App:Changed() end,
+        default = function(key) return NS.Logic.Defaults[key] end,
+    }
+end
+
+local function refreshHint(host)
+    local hint = host.hint
+    if not hint then return end
+    hint:SetText(A.Combat() and tr("Im Kampf sind einige Aktionen gesperrt.", "Some actions are locked in combat.")
+        or tr("Änderungen werden sofort gespeichert.", "Changes are saved immediately."))
+end
+
+local function buildPage(host, def, page, view)
+    local previous = host.index
+    host.index = def.id
+    host.updates[def.id] = {}
+    if def.fixed then
+        U.fixed[def.id](host, page.frame)
+        page.refresh = function()
+            host.index = def.id
+            for _, update in ipairs(host.updates[def.id]) do update() end
+            host:RefreshData()
+            refreshHint(host)
+        end
+        page.onHide = function() host:CloseTransient() end
     else
-        f:SetSize(WIDTH, HEIGHT)
-        f:SetFrameStrata("DIALOG")
-        f:SetClampedToScreen(true)
-        f:EnableMouse(true)
-        f:SetMovable(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); savePosition(self) end)
-        T.Shell(f)
-        restorePosition(f)
-        UISpecialFrames[#UISpecialFrames + 1] = "ZenialUtilitySettings"
-    end
-    local v = NS.ConfigWizard.New({store = {}})
-    v.frame, v.embedded, v.draft = f, embedded, NS.App.db
-    v.anchors = {}
-    function v:Changed() NS.App.db = self.draft; NS.App:Changed() end
-
-    local sidebar = embedded and EMBED_SIDEBAR or SIDEBAR
-    local sideX = embedded and 0 or 14
-    local navTop = embedded and EMBED_NAV_TOP or NAV_TOP
-    local left = embedded and sideX + sidebar + 20 or SIDEBAR + 32
-    local top = embedded and EMBED_TOP or NAV_TOP
-
-    -- Title bar
-    if not embedded then
-        local heading = T.Text(f, "ZENIAL UTILITY", "GameFontNormalLarge", "gold")
-        heading:SetPoint("TOPLEFT", 24, -28)
-        local version = A.Call(_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata, "ZenialUtility", "Version")
-        local sub = T.Text(f, tr("Einstellungen", "Settings") .. (type(version) == "string" and ("  ·  " .. version) or ""), "GameFontHighlightSmall", "muted")
-        sub:SetPoint("TOPLEFT", 26, -48)
-        v.close = W.CloseButton(f, function() f:Hide() end)
-    end
-    -- Sidebar
-    local side = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    side:SetPoint("TOPLEFT", sideX, navTop + 8)
-    side:SetPoint("BOTTOMLEFT", sideX, embedded and 0 or 14)
-    side:SetWidth(sidebar)
-    T.Panel(side, "inset")
-
-    -- Navigation, with small group headings in the sidebar.
-    v.nav = {}
-    local y, lastGroup = navTop, nil
-    for _, def in ipairs(U.Pages) do
-        local button = navButton(v, f, def, sidebar - 24)
-        if def.group and def.group ~= lastGroup then
-            if lastGroup then y = y - 6 end
-            local label = T.Text(f, pick(def.group), "GameFontHighlightSmall", "muted")
-            label:SetPoint("TOPLEFT", sideX + 14, y - 4)
-            y = y - 20
-            lastGroup = def.group
+        local form = Form.New(newContext(), page.content, view.formWidth)
+        page.form = form
+        render(form, host, def)
+        addReset(form, host, def)
+        page.refresh = function()
+            host.index = def.id
+            for _, update in ipairs(host.updates[def.id]) do update() end
+            host:RefreshData()
+            form:Refresh()
+            page.content:SetHeight(form:Height())
+            refreshHint(host)
         end
-        button:SetPoint("TOPLEFT", sideX + 12, y)
-        y = y - 30
-        v.nav[def.id] = button
     end
+    host.index = previous
+end
 
-    -- Page header: title, one-line description, restore defaults.
-    local headerWidth = (embedded and 856 or WIDTH) - left - 40
-    v.pageTitle = T.Text(f, "", "GameFontNormalLarge", "gold")
-    v.pageTitle:SetPoint("TOPLEFT", left, top)
-    v.pageTitle:SetWidth(headerWidth - 220)
-    v.pageDesc = T.Text(f, "", "GameFontHighlightSmall", "textSoft")
-    v.pageDesc:SetPoint("TOPLEFT", left, top - 24)
-    v.pageDesc:SetWidth(headerWidth)
-    v.pageDesc:SetHeight(28)
-    v.resetPage = T.Button(f, tr("Standardwerte wiederherstellen", "Restore defaults"), 220, 24, function() U.ConfirmPageReset(v) end, "secondary")
-    v.resetPage:SetPoint("TOPRIGHT", embedded and -20 or -40, top + 2)
-    W.Tooltip(v.resetPage, tr("Standardwerte wiederherstellen", "Restore defaults"),
-        tr("Setzt nur die Einstellungen dieser Seite zurück. Vorher wird nachgefragt.", "Resets only the settings on this page. You are asked first."))
-    local divider = T.Divider(f)
-    divider:SetPoint("TOPLEFT", left, top - 56)
-    divider:SetPoint("TOPRIGHT", embedded and -16 or -24, top - 56)
-    local bodyTop = top - 66
-    local bottom = embedded and 24 or 40
+----------------------------------------------------------------------
+-- Search box: in the top bar of the own window, in the footer of the embedded view. Hits jump to the row.
+----------------------------------------------------------------------
+local FOOTER_HINT_WIDTH = 260
 
-    -- Footer: result of the last action, autosave note.
-    v.message = T.Text(f, "", "GameFontHighlightSmall", "gold")
-    v.message:SetPoint("BOTTOMLEFT", left, embedded and 6 or 16)
-    v.message:SetWidth(embedded and 380 or 420)
-    v.footer = T.Text(f, "", "GameFontHighlightSmall", "muted")
-    v.footer:SetPoint("BOTTOMRIGHT", embedded and -20 or -28, embedded and 6 or 16)
-    v.footer:SetWidth(260)
-    v.footer:SetJustifyH("RIGHT")
-    function v:SetMessage(message) self.message:SetText(message or "") end
-
-    -- Scrolling page area and the fixed area for the list pages (macros, UI profiles, graphics).
-    local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", left, bodyTop)
-    scroll:SetPoint("BOTTOMRIGHT", -44, bottom)
-    v.scroll = scroll
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(C.Width + 12, 500)
-    scroll:SetScrollChild(content)
-    v.content = content
-    W.ScrollBar(scroll, 40)
-    local fixed = CreateFrame("Frame", nil, f)
-    fixed:SetPoint("TOPLEFT", left, bodyTop)
-    fixed:SetPoint("BOTTOMRIGHT", embedded and -16 or -24, bottom)
-    fixed:Hide()
-    v.fixedHost = fixed
-
-    -- Search box: top right, in the title bar of the own window or above the page header when embedded.
-    local search = W.Edit(f, 0, 0, 260, function(text) U.ShowSearch(v, text) end)
+local function buildSearch(host, frame, embedded)
+    local search = W.Edit(frame, 0, 0, 260, function(text) U.ShowSearch(host, text) end)
     search:ClearAllPoints()
-    search:SetPoint("TOPRIGHT", embedded and -20 or -52, embedded and -6 or -24)
-    W.Tooltip(search, tr("Einstellungen suchen", "Search settings"),
+    if embedded then
+        -- Same line as the status and the hint at the bottom of the view: no row of its own.
+        search:SetSize(200, 24)
+        search:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(T.space.lg + 90 + T.space.sm + FOOTER_HINT_WIDTH + T.space.sm), 3)
+    else
+        search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -1)
+    end
+    NS.Form.Tooltip(search, tr("Einstellungen suchen", "Search settings"),
         tr("Durchsucht alle Seiten, auf Deutsch und Englisch. Enter öffnet den ersten Treffer.", "Searches every page, in German and English. Enter opens the first match."))
     search:SetScript("OnEnterPressed", function(self)
-        local first = v.searchResults.rows[1]
-        if v.searchResults:IsShown() and first:IsShown() then first:Click() end
+        local first = host.searchResults.rows[1]
+        if host.searchResults:IsShown() and first:IsShown() then first:Click() end
         self:ClearFocus()
     end)
-    search:SetScript("OnEscapePressed", function(self) self:SetText(""); U.ShowSearch(v, ""); self:ClearFocus() end)
-    v.search = search
-    v.searchHint = T.Text(search, tr("Einstellung suchen …", "Search settings …"), "GameFontHighlightSmall", "muted")
-    v.searchHint:SetPoint("LEFT", 8, 0)
-    local results = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    search:SetScript("OnEscapePressed", function(self) self:SetText(""); U.ShowSearch(host, ""); self:ClearFocus() end)
+    host.search = search
+    host.searchHint = T.Text(search, tr("Einstellung suchen …", "Search settings …"), "GameFontHighlightSmall", "muted")
+    host.searchHint:SetPoint("LEFT", 8, 0)
+    local results = CreateFrame("Frame", nil, frame, BackdropTemplateMixin and "BackdropTemplate" or nil)
     results:SetSize(420, 40)
-    results:SetPoint("TOPRIGHT", search, "BOTTOMRIGHT", 0, -2)
+    if embedded then
+        results:SetPoint("BOTTOMLEFT", search, "TOPLEFT", 0, 2)
+    else
+        results:SetPoint("TOPRIGHT", search, "BOTTOMRIGHT", 0, -2)
+    end
     results:SetFrameStrata("FULLSCREEN_DIALOG")
     results:EnableMouse(true)
     T.Panel(results, "surface")
     results:Hide()
-    v.searchResults = results
+    host.searchResults = results
     results.rows = {}
     for index = 1, 8 do
         local row = T.Button(results, "", 404, 26, function(self)
             results:Hide()
-            v.search:SetText("")
-            v.searchHint:Show()
-            v:Jump(self.page, self.anchor)
+            host.search:SetText("")
+            host.searchHint:Show()
+            host:Jump(self.page, self.anchor)
         end, "secondary")
         row:SetPoint("TOPLEFT", 8, -6 - (index - 1) * 28)
         row.where = T.Text(row, "", "GameFontHighlightSmall", "muted")
@@ -300,128 +317,15 @@ function U.Create(parent, embedded)
     results.more = T.Text(results, "", "GameFontHighlightSmall", "muted")
     results.more:SetPoint("BOTTOMLEFT", 12, 8)
     results.more:SetWidth(396)
-    v.popups[#v.popups + 1] = results
-
-    function v:SelectPage(id)
-        id = U.Resolve(id) or "overview"
-        self:CloseTransient()
-        self.index, self.draft = id, NS.App.db
-        self:SetMessage("")
-        for _, page in pairs(self.pages) do
-            page:Hide()
-            if page.flash then page.flash:Hide() end
-        end
-        local def = U.ById[id]
-        local isFixed = def.fixed == true
-        self:BuildPage(id)
-        self.pages[id]:Show()
-        scroll:SetShown(not isFixed)
-        fixed:SetShown(isFixed)
-        if not isFixed then
-            self.content:SetHeight(self.pages[id].height + 24)
-            scroll:SetVerticalScroll(0)
-            scroll:UpdateScrollChildRect()
-            scroll:RefreshScrollbar()
-        end
-        self.pageTitle:SetText(pick(def.heading or def.title))
-        self.pageDesc:SetText(pick(def.desc) or "")
-        self.resetPage:SetShown(#U.ResetKeys(def) > 0 or def.resetExtra ~= nil)
-        for key, button in pairs(self.nav) do T.SetSelected(button, key == id) end
-        self:Refresh()
-    end
-    function v:BuildPage(id)
-        if self.pages[id] then return end
-        local def = U.ById[id]
-        local index = self.index
-        self.index = id
-        self.updates[id] = {}
-        if def.fixed then
-            local page = CreateFrame("Frame", nil, fixed)
-            page:SetAllPoints(fixed)
-            self.pages[id] = page
-            U.fixed[id](self, page)
-        else
-            local page = CreateFrame("Frame", nil, self.content)
-            page:SetPoint("TOPLEFT", 6, -8)
-            page:SetWidth(C.Width)
-            self.pages[id] = page
-            page.height = C.Form(self, page, id):Render(def.nodes)
-            page:SetHeight(page.height)
-        end
-        self.pages[id]:Hide()
-        self.index = index
-    end
-    -- Opens a page and brings one setting into view with a short highlight.
-    function v:Jump(id, anchor)
-        self:SelectPage(id)
-        id = self.index
-        local spot = anchor and self.anchors[id .. ":" .. anchor]
-        local page = self.pages[id]
-        if not spot or U.ById[id].fixed then return end
-        local range = scroll:GetVerticalScrollRange() or 0
-        scroll:SetVerticalScroll(math.max(0, math.min(range, spot.y - 24)))
-        scroll:RefreshScrollbar()
-        if not page.flash then
-            page.flash = page:CreateTexture(nil, "BACKGROUND")
-            T.Tint(page.flash, "SetColorTexture", "gold", .14)
-        end
-        page.flash:ClearAllPoints()
-        page.flash:SetPoint("TOPLEFT", page, "TOPLEFT", -6, -spot.y + 4)
-        page.flash:SetSize(C.Width + 12, spot.height + 8)
-        page.flash:Show()
-        local timer = _G.C_Timer
-        if timer and type(timer.After) == "function" then
-            local flash = page.flash
-            timer.After(1.8, function() flash:Hide() end)
-        end
-    end
-    function v:Search(text)
-        local out = {}
-        for _, entry in ipairs(NS.SettingsSearch.Find(text, U.Order)) do
-            out[#out + 1] = {page = entry.page, text = pick(entry.title), id = entry.id, section = entry.section}
-        end
-        return out
-    end
-    function v:RefreshData() U.RefreshPageData(self) end
-    function v:Refresh()
-        self.draft = NS.App.db
-        for _, update in ipairs(self.updates[self.index] or {}) do update() end
-        self:RefreshData()
-        self.footer:SetText(A.Combat() and tr("Im Kampf sind einige Aktionen gesperrt.", "Some actions are locked in combat.")
-            or tr("Änderungen werden sofort gespeichert.", "Changes are saved immediately."))
-    end
-    f:SetScript("OnShow", function(self)
-        if not embedded then fitScale(self) end
-        v:Refresh()
-    end)
-    f:SetScript("OnHide", function() v:CloseTransient() end)
-    U.views[#U.views + 1] = v
-    v:SelectPage("overview")
-    f:Hide()
-    return v
+    host.popups[#host.popups + 1] = results
 end
 
-function U.ConfirmPageReset(v)
-    local def = U.ById[v.index]
-    local title = pick(def.title)
-    NS.SettingsControls.Confirm(v, tr("Standardwerte wiederherstellen?", "Restore defaults?"),
-        string.format(tr("Alle Einstellungen auf der Seite „%s“ werden auf die Standardwerte zurückgesetzt. Andere Seiten bleiben unverändert.",
-            "All settings on the “%s” page go back to their defaults. Other pages stay as they are."), title),
-        tr("Zurücksetzen", "Reset"), function()
-            if A.Combat() then v:SetMessage(tr("Im Kampf nicht möglich.", "Not possible in combat.")); return end
-            NS.Logic.ResetKeys(db(), U.ResetKeys(def))
-            if def.resetExtra then def.resetExtra(db()) end
-            v:Changed()
-            v:SetMessage(string.format(tr("Standardwerte für „%s“ wiederhergestellt.", "Defaults restored for “%s”."), title))
-        end, "danger")
-end
-
-function U.ShowSearch(v, text)
-    v.searchHint:SetShown(text == "")
-    local results = v.searchResults
+function U.ShowSearch(host, text)
+    host.searchHint:SetShown(text == "")
+    local results = host.searchResults
     local query = (text or ""):match("^%s*(.-)%s*$")
     if query == "" then results:Hide(); return end
-    local rows = v:Search(query)
+    local rows = host:Search(query)
     for index, button in ipairs(results.rows) do
         local row = rows[index]
         button.page, button.anchor = row and row.page, row and row.id
@@ -442,21 +346,87 @@ function U.ShowSearch(v, text)
     results:Show()
 end
 
-function U.Refresh() for _, v in ipairs(U.views) do v:Refresh() end end
-function U.RefreshData() for _, v in ipairs(U.views) do if v.frame:IsVisible() then v:RefreshData() end end end
+----------------------------------------------------------------------
+-- A settings view: the shared Window plus the state the pages share (what the old view carried)
+----------------------------------------------------------------------
+
+local function newHost(embedded)
+    -- The wizard base only supplies the dropdown and update list that the list pages draw with.
+    local host = NS.ConfigWizard.New({store = {}})
+    host.embedded = embedded
+    host.index = nil
+    host.draft = nil
+    function host:Changed() NS.App:Changed() end
+    function host:SetMessage(message) if self.window then self.window:SetStatus(message or "") end end
+    function host:SelectPage(id) return self.window:SelectPage(U.Resolve(id) or "overview") end
+    function host:Jump(id, anchor) return self.window:Jump(U.Resolve(id) or "overview", anchor) end
+    function host:Form(id) local page = self.window:Page(id); return page and page.form end
+    function host:Search(text)
+        local out = {}
+        for _, entry in ipairs(NS.SettingsSearch.Find(text, U.Order)) do
+            out[#out + 1] = {page = entry.page, text = pick(entry.title), id = entry.id, section = entry.section}
+        end
+        return out
+    end
+    function host:RefreshData() U.RefreshPageData(self) end
+    function host:Refresh() self.window:Refresh() end
+    return host
+end
+
+local function windowSpec(host, embedded)
+    local pages = {}
+    for _, def in ipairs(U.Pages) do
+        pages[#pages + 1] = {
+            key = def.id, title = def.title, subtitle = def.desc, group = def.group, icon = def.icon, fixed = def.fixed,
+            build = function(page, view) buildPage(host, def, page, view) end,
+        }
+    end
+    return {
+        name = not embedded and "ZenialUtilitySettings" or nil, label = "Utility", version = version, tr = pick, pages = pages,
+        position = not embedded and {load = loadPosition, save = savePosition} or nil,
+        header = not embedded and function(frame) buildSearch(host, frame, false) end or nil,
+        onPage = function(key) host.index = key end,
+        onLeave = function() host:CloseTransient() end,
+        onHide = function() host:CloseTransient() end,
+    }
+end
+
+function U.Create(parent, embedded)
+    local host = newHost(embedded)
+    local view = Window.New(windowSpec(host, embedded), embedded and parent or nil)
+    host.window, host.frame = view, view.frame
+    -- The note on the right of the footer line; the status line of the window keeps the room left of it.
+    if embedded then buildSearch(host, view.frame, true) end
+    host.hint = K.Text(view.frame, "", "caption", "muted")
+    host.hint:SetSize(FOOTER_HINT_WIDTH, 12)
+    host.hint:SetJustifyH("RIGHT")
+    host.hint:SetPoint("BOTTOMRIGHT", view.frame, "BOTTOMRIGHT", embedded and -(T.space.lg + 90 + T.space.sm) or -T.space.lg, 9)
+    local layout = view.Layout
+    function view:Layout()
+        layout(self)
+        self.status:SetWidth(math.max(100, (self.areaWidth or 690) - FOOTER_HINT_WIDTH - 2 * T.space.lg - (embedded and 216 or 0)))
+    end
+    view:Layout()
+    refreshHint(host)
+    U.views[#U.views + 1] = host
+    if embedded then view:SelectPage("overview") end
+    return host
+end
+
+function U.Refresh() for _, host in ipairs(U.views) do host:Refresh() end end
+function U.RefreshData() for _, host in ipairs(U.views) do if host.frame:IsVisible() then host:RefreshData() end end end
 function U.HideAll()
-    for _, v in ipairs(U.views) do
-        v:CloseTransient()
-        if not v.embedded then v.frame:Hide() end
+    for _, host in ipairs(U.views) do
+        host:CloseTransient()
+        if not host.embedded then host.window:Close() end
     end
 end
 function U.Open(page)
     if NS.Setup and NS.Setup.wizard and NS.Setup.wizard.frame then NS.Setup.wizard.frame:Hide() end
     U.standalone = U.standalone or U.Create(nil, false)
-    U.standalone:SelectPage(page or "overview")
-    U.standalone.frame:Show()
+    U.standalone.window:Open(U.Resolve(page) or "overview")
     return U.standalone
 end
 function U.Toggle()
-    if U.standalone and U.standalone.frame:IsShown() then U.standalone.frame:Hide() else U.Open() end
+    if U.standalone and U.standalone.window:IsShown() then U.standalone.window:Close() else U.Open() end
 end

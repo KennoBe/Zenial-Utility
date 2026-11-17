@@ -1,6 +1,6 @@
 local _, NS = ...
 local U = NS.SettingsUI
-local T, tr, A, W, G = NS.Theme, NS.Text, NS.Adapter, NS.Widgets, NS.Graphics
+local T, K, tr, A, G = NS.Theme, NS.Kit, NS.Text, NS.Adapter, NS.Graphics
 
 local COST = {
     [0] = {tr("Kaum FPS-Kosten", "Hardly any FPS cost"), "online"},
@@ -24,7 +24,7 @@ local function buildRow(v, content, row, y)
     frame:SetHeight(54)
     frame:SetPoint("TOPLEFT", 0, y)
     frame:SetPoint("RIGHT", content, "RIGHT", 0, 0)
-    W.Tooltip(frame, row.title, (row.hint ~= "" and (row.hint .. "\n\n") or "") .. row.name)
+    NS.Form.Tooltip(frame, row.title, (row.hint ~= "" and (row.hint .. "\n\n") or "") .. row.name)
     local title = T.Text(frame, row.title, "GameFontHighlight", "text")
     title:SetPoint("TOPLEFT", 4, -6)
     title:SetWidth(250)
@@ -42,7 +42,7 @@ local function buildRow(v, content, row, y)
         U.Refresh()
     end, "secondary")
     reset:SetPoint("TOPRIGHT", -2, -8)
-    W.Tooltip(reset, tr("Spielstandard", "Game default"), tr("Setzt nur diese Einstellung auf den Standardwert des Spiels zurück.", "Resets only this setting to the game's default value."))
+    NS.Form.Tooltip(reset, tr("Spielstandard", "Game default"), tr("Setzt nur diese Einstellung auf den Standardwert des Spiels zurück.", "Resets only this setting to the game's default value."))
 
     local updating = false
     local control
@@ -109,7 +109,7 @@ function U.fixed.graphics(v, page)
         -- The tooltip text is static, so the summary is evaluated once for this client.
         local lines = G.PresetSummary(preset.key)
         if #lines > 0 then tip = tip .. "\n\n" .. table.concat(lines, "\n") end
-        W.Tooltip(button, preset.title, tip)
+        NS.Form.Tooltip(button, preset.title, tip)
         buttons[#buttons + 1] = button
     end
     local function placeButtons()
@@ -175,9 +175,9 @@ function U.fixed.graphics(v, page)
         U.Refresh()
     end, "secondary")
     v.graphicsBackup:SetPoint("TOPLEFT", 0, -38)
-    W.Tooltip(v.graphicsBackup, tr("Meine früheren Werte", "My previous values"), tr("Stellt alles her, was du vor der ersten Änderung durch ZENIAL Utility eingestellt hattest.", "Restores everything you had set before ZENIAL Utility first changed it."))
+    NS.Form.Tooltip(v.graphicsBackup, tr("Meine früheren Werte", "My previous values"), tr("Stellt alles her, was du vor der ersten Änderung durch ZENIAL Utility eingestellt hattest.", "Restores everything you had set before ZENIAL Utility first changed it."))
     v.graphicsDefaults = T.Button(footer, tr("Alles auf Spielstandard …", "All to game default …"), 190, 26, function()
-        NS.SettingsControls.Confirm(v, tr("Alle Grafikwerte auf Spielstandard?", "All graphics values to game default?"),
+        U.Confirm(v, tr("Alle Grafikwerte auf Spielstandard?", "All graphics values to game default?"),
             tr("Jede hier aufgeführte Einstellung kehrt zum Standardwert des Spiels zurück. „Meine früheren Werte“ bleibt danach verfügbar.",
                 "Every setting listed here returns to the game's default value. “My previous values” stays available afterwards."),
             tr("Auf Spielstandard setzen", "Set to game default"), function()
@@ -191,18 +191,16 @@ function U.fixed.graphics(v, page)
     local area = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate" or nil)
     area:SetPoint("TOPLEFT", intro, "BOTTOMLEFT", 0, 0)
     area:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 4)
-    local scroll = CreateFrame("ScrollFrame", nil, area)
+    local scroll, content = NS.Window.ScrollArea(area)
     scroll:SetPoint("TOPLEFT", 6, -6)
-    scroll:SetPoint("BOTTOMRIGHT", -28, 6)
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(600, 400)
-    scroll:SetScrollChild(content)
-    W.ScrollBar(scroll, 54)
+    scroll:SetPoint("BOTTOMRIGHT", -24, 6)
     local y = -4
     local sections = G.Rows()
     v.graphicsRows = 0
     for _, section in ipairs(sections) do
-        W.Section(content, section.title, y, 600)
+        local heading = K.SectionHeader(content, section.title)
+        heading:SetPoint("TOPLEFT", 4, y - 4)
+        heading:SetPoint("TOPRIGHT", -4, y - 4)
         y = y - 26
         for _, row in ipairs(section.rows) do
             buildRow(v, content, row, y)
@@ -243,16 +241,16 @@ NS.GraphicsConfirm = Confirm
 function Confirm.Create()
     if Confirm.frame then return end
     local f = CreateFrame("Frame", "ZenialUtilityGraphicsConfirm", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    f:SetSize(420, 150)
+    f:SetSize(420, 194)
     f:SetPoint("TOP", 0, -140)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
-    T.Panel(f, "surface")
-    local title = T.Text(f, tr("Grafikänderung behalten?", "Keep the graphics change?"), "GameFontNormal", "gold")
-    title:SetPoint("TOPLEFT", 18, -16)
+    T.Shell(f)
+    -- No close button: Escape deliberately does not answer the question, and neither does a close icon.
+    K.DialogHeader(f, K.Text(f, tr("Grafikänderung behalten?", "Keep the graphics change?"), "title"))
     Confirm.text = T.Text(f, "", "GameFontHighlight", "text")
-    Confirm.text:SetPoint("TOPLEFT", 18, -40)
+    Confirm.text:SetPoint("TOPLEFT", 18, -64)
     Confirm.text:SetWidth(384)
     Confirm.keep = T.Button(f, tr("Behalten", "Keep"), 150, 30, function() G.Keep(db()) end, "primary")
     Confirm.keep:SetPoint("BOTTOMLEFT", 18, 16)

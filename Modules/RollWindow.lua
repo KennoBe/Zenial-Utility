@@ -1,9 +1,9 @@
 local _, NS = ...
 local R = {rows = {}}
 NS.RollWindow = R
-local T, W, L, A, tr = NS.Theme, NS.Widgets, NS.Logic, NS.Adapter, NS.Text
+local T, K, L, A, tr = NS.Theme, NS.Kit, NS.Logic, NS.Adapter, NS.Text
 
-local WIDTH, ROW_HEIGHT, MAX_VISIBLE, CHROME = 250, 18, 10, 106
+local WIDTH, ROW_HEIGHT, MAX_VISIBLE, CHROME = 250, 18, 10, 122
 
 local function place(f)
     local saved = NS.App.db.rollWindow
@@ -45,29 +45,25 @@ local function create()
         NS.App.db.rollWindow = {x = self:GetLeft(), y = self:GetTop()}
         place(self)
     end)
-    T.Panel(f, "surface")
+    T.Shell(f)
     f.rows = R.rows
 
-    local title = T.Text(f, tr("Würfe", "Rolls"), "GameFontNormal", "gold")
-    title:SetPoint("TOPLEFT", 14, -12)
+    -- Shared dialog header: title band and close button.
+    local title = K.Text(f, tr("Würfe", "Rolls"), "title")
+    K.DialogHeader(f, title, function() f:Hide() end)
     f.start = T.Text(f, "", "GameFontHighlightSmall", "muted")
-    f.start:SetPoint("LEFT", title, "RIGHT", 8, 0)
+    f.start:SetPoint("LEFT", title, "LEFT", 70, 0)
     f.winner = T.Text(f, "", "GameFontHighlightSmall", "gold")
-    f.winner:SetPoint("TOPLEFT", 14, -34)
+    f.winner:SetPoint("TOPLEFT", 14, -52)
     f.winner:SetWidth(WIDTH - 28)
     f.winner:SetWordWrap(false)
-    local close = W.CloseButton(f, function() f:Hide() end)
-    close:SetSize(26, 26)
 
-    local scroll = CreateFrame("ScrollFrame", nil, f)
-    scroll:SetPoint("TOPLEFT", 14, -56)
-    scroll:SetPoint("BOTTOMRIGHT", -36, 46)
+    local scroll, content = NS.Window.ScrollArea(f, WIDTH - 50)
+    scroll:SetPoint("TOPLEFT", 14, -72)
+    scroll:SetPoint("BOTTOMLEFT", 14, 46)
     f.scroll = scroll
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(WIDTH - 50, ROW_HEIGHT)
-    scroll:SetScrollChild(content)
+    content:SetHeight(ROW_HEIGHT)
     f.content = content
-    W.ScrollBar(scroll, ROW_HEIGHT * 3)
     f.empty = T.Text(content, tr("Noch keine Würfe.", "No rolls yet."), "GameFontHighlightSmall", "muted")
     f.empty:SetPoint("TOPLEFT", 4, -3)
 

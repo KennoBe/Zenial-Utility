@@ -1,7 +1,7 @@
 local _, NS = ...
 local V = {}
 NS.Inventory = V
-local A, L, T, tr = NS.Adapter, NS.Logic, NS.Theme, NS.Text
+local A, L, T, K, tr = NS.Adapter, NS.Logic, NS.Theme, NS.Kit, NS.Text
 
 local function db() return NS.App.db end
 local function on(key) return db().modInventory and db()[key] end
@@ -136,7 +136,7 @@ local function buildMail()
             if self.key and NS.Characters.Forget(self.key) then V.UpdateMailList() end
         end, "secondary")
         row.remove:SetPoint("LEFT", row, "RIGHT", 2, 0)
-        NS.Widgets.Tooltip(row.remove, tr("Entfernen", "Remove"), tr("Nimmt diesen Charakter aus den Listen von Utility.", "Takes this character off Utility's lists."))
+        NS.Form.Tooltip(row.remove, tr("Entfernen", "Remove"), tr("Nimmt diesen Charakter aus den Listen von Utility.", "Takes this character off Utility's lists."))
         row:Hide(); row.remove:Hide()
         mail.rows[index] = row
     end
@@ -212,13 +212,14 @@ end
 local function confirmFrame()
     if V.confirm then return V.confirm end
     local f = CreateFrame("Frame", "ZenialUtilityDestroyConfirm", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-    f:SetSize(380, 120)
+    f:SetSize(380, 164)
     f:SetPoint("TOP", 0, -180)
     f:SetFrameStrata("DIALOG")
     f:EnableMouse(true)
-    T.Panel(f, "surface")
+    T.Shell(f)
+    K.DialogHeader(f, K.Text(f, tr("Zerstören", "Destroy"), "title"), function() f:Hide() end)
     f.text = T.Text(f, "", "GameFontHighlight", "text")
-    f.text:SetPoint("TOPLEFT", 16, -16)
+    f.text:SetPoint("TOPLEFT", 16, -60)
     f.text:SetWidth(348)
     f.yes = T.Button(f, tr("Zerstören", "Destroy"), 140, 28, function()
         V.Destroy(f.row)

@@ -6,7 +6,7 @@
 ## Version: 1.3.0
 ## SavedVariables: ZenialUtilityDB, ZenialMinimapDB
 ## IconTexture: Interface\AddOns\ZenialUtility\Media\Icon.tga
-## X-License: MIT
+## X-License: All Rights Reserved
 
 Locale.lua
 Logic.lua

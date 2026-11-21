@@ -1025,7 +1025,7 @@ function U.RefreshPageData(v)
         local lines = {}
         for index, entry in ipairs(rows) do
             if index > 7 then break end
-            lines[#lines + 1] = entry.scope .. "  ·  " .. L.FormatPlayed(entry.total)
+            lines[#lines + 1] = NS.Adapter.ScopeLabel(entry.scope) .. "  ·  " .. L.FormatPlayed(entry.total)
         end
         if #rows > 0 then lines[#lines + 1] = tr("Gesamt: ", "Total: ") .. L.FormatPlayed(sum) end
         v.playedLabel:SetText(#lines > 0 and table.concat(lines, "\n") or tr("Noch keine Spielzeit erfasst.", "No playtime recorded yet."))

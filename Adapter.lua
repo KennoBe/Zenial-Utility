@@ -29,11 +29,55 @@ function A.Print(message)
     if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffffcc44ZENIAL Utility|r · " .. message) end
 end
 
+-- Forever may report the realm as "". The last real realm of this character (keyed by the stable
+-- player GUID) or the only saved character of this name and faction then keeps the old keys in use.
+-- Nothing is invented: without any hint the realm stays "".
+function A.Realm(name)
+    if A.realm then return A.realm end
+    local api = A.Call(GetRealmName)
+    api = type(api) == "string" and api ~= "" and api or nil
+    local guid = A.Call(UnitGUID, "player")
+    guid = type(guid) == "string" and guid ~= "" and guid or nil
+    local data = NS.App and NS.App.db
+    if type(data) ~= "table" then return api or "" end
+    if type(data.realms) ~= "table" then data.realms = {} end
+    if api then
+        if guid then data.realms[guid] = api end
+        A.realm = api
+        return api
+    end
+    local saved = guid and data.realms[guid]
+    if type(saved) == "string" and saved ~= "" then A.realm = saved; return saved end
+    if type(name) ~= "string" then return "" end
+    local faction = A.Call(UnitFactionGroup, "player")
+    -- Keys hold only the first name, so several characters can share it: the stored class and faction must match too.
+    local okClass, _, class = pcall(UnitClass, "player")
+    class = okClass and type(class) == "string" and class or nil
+    local found, count = nil, 0
+    for key, row in pairs(type(data.characters) == "table" and data.characters or {}) do
+        if type(key) == "string" and type(row) == "table" and key:sub(1, #name + 1) == name .. "-" then
+            local realm = key:sub(#name + 2)
+            if realm ~= "" and realm ~= found and not (row.faction and faction and row.faction ~= faction)
+                and not (row.class and class and row.class ~= class) then
+                found, count = realm, count + 1
+            end
+        end
+    end
+    -- Only a known realm is kept for the session; an empty answer is asked again (the GUID may not be ready yet).
+    local realm = count == 1 and found or ""
+    if realm ~= "" then A.realm = realm end
+    return realm
+end
+
 function A.Scope()
     local name = A.Call(UnitName, "player")
-    local realm = A.Call(GetRealmName)
     if type(name) ~= "string" then return nil end
-    return name .. "-" .. (type(realm) == "string" and realm or "")
+    return name .. "-" .. A.Realm(name)
+end
+
+-- Character key as shown to the player: no dangling "-" when the realm is unknown.
+function A.ScopeLabel(scope)
+    return (tostring(scope):gsub("%-$", ""))
 end
 
 function A.Money(copper)

@@ -317,7 +317,7 @@ function U.fixed.macros(v, page)
             local scope = scopes[index]
             row.scope = scope
             if scope then
-                row.label:SetText(scope .. "  ·  " .. string.format(tr("%d Makros", "%d macros"), #db().macroSets[scope]) .. (scope == own and ("  ·  " .. tr("dieser Charakter", "this character")) or ""))
+                row.label:SetText(A.ScopeLabel(scope) .. "  ·  " .. string.format(tr("%d Makros", "%d macros"), #db().macroSets[scope]) .. (scope == own and ("  ·  " .. tr("dieser Charakter", "this character")) or ""))
                 row.button:SetEnabled(scope ~= own and not A.Combat())
                 row:Show()
             else

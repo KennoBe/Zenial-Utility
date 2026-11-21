@@ -143,7 +143,7 @@ I.Modules = {
             table.sort(rows, function(a, b) return a.money > b.money end)
             for index, row in ipairs(rows) do
                 if index > 15 then break end
-                tipLine(row.key, formatGold(row.money))
+                tipLine(A.ScopeLabel(row.key), formatGold(row.money))
             end
         end},
     {key = "session", icon = "Interface\\Icons\\INV_Misc_Coin_06", de = "Gold dieser Sitzung", en = "Gold this session", events = {"PLAYER_MONEY"},

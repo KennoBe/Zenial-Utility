@@ -91,7 +91,7 @@ function V.MailRows()
     local rows = {}
     local own, scope = NS.Characters.Own()
     for key, row in pairs(db().characters) do
-        if key ~= scope and own and row.name and row.realm == own.realm and row.faction == own.faction then
+        if key ~= scope and own and row.name and ((own.realm or "") == "" or (row.realm or "") == "" or row.realm == own.realm) and row.faction == own.faction then
             rows[#rows + 1] = {key = key, name = row.name, level = row.level, class = row.class}
         end
     end

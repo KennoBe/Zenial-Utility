@@ -33,7 +33,8 @@ function C.Update()
     row.class = A.PlayerClass()
     row.faction = (A.Call(UnitFactionGroup, "player")) or row.faction
     row.name = (A.Call(UnitName, "player")) or row.name
-    row.realm = (A.Call(GetRealmName)) or row.realm
+    local realm = A.Realm(row.name)
+    if realm ~= "" then row.realm = realm end
     row.seen = A.Call(GetServerTime) or row.seen
 end
 

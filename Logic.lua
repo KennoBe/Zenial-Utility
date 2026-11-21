@@ -142,7 +142,7 @@ local CHOICES = {
 -- Account data that belongs to no profile and is kept as it is.
 local EXTRA = {"setup", "cvarBackup", "pendingRevert", "imported", "macroInputs", "macroSets", "played", "rollWindow",
     "profiles", "charProfiles", "characters", "charData", "sellStats", "bagPosition", "lootFeedPosition", "lootRollPosition", "layoutLibrary",
-    "settingsWindow"}
+    "settingsWindow", "realms"}
 L.DataVersion = 4
 
 -- Up to 0.3 every topic had a hidden master switch (only on the overview cards). Its options stayed
